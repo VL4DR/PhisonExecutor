@@ -2,11 +2,15 @@ import ctypes
 from enum import Enum
 
 class NVMEIoctl(Enum):
-	NVME_IOCTL_ADMIN_CMD = 0xC0484E41
-	NVME_IOCTL_RESET = 0x4E44
+    """NVMe-related IO Control codes
+	"""
+    NVME_IOCTL_ADMIN_CMD = 0xC0484E41
+    NVME_IOCTL_RESET = 0x4E44
 
 class NVMEPassThrough(ctypes.Structure):
-	_fields_ = [('opcode', ctypes.c_ubyte),
+    """NVMe passthrough packet structure.
+	"""
+    _fields_ = [('opcode', ctypes.c_ubyte),
 				('flags', ctypes.c_ubyte),
 				('rsvd1', ctypes.c_uint16),
 				('nsid', ctypes.c_uint32),
@@ -24,3 +28,4 @@ class NVMEPassThrough(ctypes.Structure):
 				('cdw15', ctypes.c_uint32),
 				('timeout_ms', ctypes.c_uint32),
 				('result', ctypes.c_uint32)]
+    _pack_ = 1

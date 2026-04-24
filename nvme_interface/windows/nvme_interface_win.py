@@ -28,11 +28,7 @@ class NVMEInterface:
 
 	
 	def _initialize_device(self, device_path : str):
-		dev_inst = NVMEInterface._get_device_instance(device_path)
-		if dev_inst is None:
-			raise exceptions.DeviceInaccessibleException("Could not find the dev instance for this path!")
 		self._device = NVMEInterface._open_device(device_path)
-		self._dev_inst = dev_inst
 		self._device_path = device_path
 	
 	@staticmethod
