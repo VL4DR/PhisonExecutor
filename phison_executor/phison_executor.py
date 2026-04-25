@@ -7,6 +7,8 @@ from common import nvme_common
 from phison_executor import phison_executor_defs
 from phison import phison_defs
 from phison.phison_layer import PhisonLayer
+from server_interface.server_interface import ServerInterface
+from server_interface import server_defs
 
 logger = logging.getLogger(__name__)
 
@@ -115,10 +117,10 @@ class PhisonExecutor:
         trampoline_address = self._fw_defs['server_trampoline_address']
 
         logger.info("Writing server binary...")
-        self.memory_write(server_base_address, server_binary)
+        self._phison_write_large(server_base_address, server_binary)
 
         logger.info("Writing server trampoline...")
-        self.memory_write(trampoline_address, trampoline_binary)
+        self._phison_write_large(trampoline_address, trampoline_binary)
 
         # Wait some time for data cache to be flushed
         # Not very reliable, but we don't have a call primitive
@@ -126,39 +128,39 @@ class PhisonExecutor:
         time.sleep(10)
 
 
-    def _compute_key(self, reconstructed_sequence : bytes) -> bytes:
+    def _compute_key(self, decrypted_part : bytes) -> bytes:
         """Compute the response encryption key.
 
-        :param reconstructed_sequence: The decrypted challenge.
-        :type reconstructed_sequence: bytes
-        :return: _description_
+        :param decrypted_part: The decrypted part of the challenge.
+        :type decrypted_part: bytes
+        :return: The AES key to use for encrypting the response to controller.
         :rtype: bytes
         """
-        reconstructed_sequence_chunks = PhisonExecutor._split_to_key_size_chunks(
-            reconstructed_sequence)
-        reconstructed_result = reduce(PhisonExecutor._xor_buffers,
-                                      reconstructed_sequence_chunks)
+        decrypted_part_chunks = PhisonExecutor._split_to_key_size_chunks(
+            decrypted_part)
+        decrypted_part_xored = reduce(PhisonExecutor._xor_buffers,
+                                      decrypted_part_chunks)
 
         modulus_bytes_chunks = PhisonExecutor._split_to_key_size_chunks(self._modulus_bytes)
         modulus_xor_result = reduce(PhisonExecutor._xor_buffers, modulus_bytes_chunks)
 
-        return PhisonExecutor._xor_buffers(reconstructed_result, modulus_xor_result)
+        return PhisonExecutor._xor_buffers(decrypted_part_xored, modulus_xor_result)
 
-    def _generate_response(self, plain_challenge : bytes) -> bytes:
+
+    def _generate_response(self, decrypted_part : bytes, plain_part : bytes) -> bytes:
         """Generate a response for the challenge to be sent to controller.
 
-        :param plain_challenge: The decrypted challenge.
-        :type plain_challenge: bytes
+        :param decrypted_part: The decrypted part of the challenge.
+        :type decrypted_part: bytes
+        :param plain_part: The plain part of the challenge.
+        :type plain_part: bytes
         :return: The encrypted challenge to send to the controller.
         :rtype: bytes
         """
-        scrambled_part_size = phison_defs.PHISON_SECURITY_CHALLENGE_ENCRYPTED_PART_SIZE
-        reconstructed_part = plain_challenge[ : scrambled_part_size]
-
-        key = self._compute_key(reconstructed_part)
+        key = self._compute_key(decrypted_part)
         cipher = AES.new(key, AES.MODE_CBC, phison_defs.PHISON_SECURITY_AES_IV)
-        plain_part = PhisonExecutor._get_plain_challenge_part(plain_challenge)
-        return b''.join([cipher.encrypt(reconstructed_part), plain_part])
+        return b''.join([cipher.encrypt(decrypted_part), plain_part])
+
 
     def _enable_security_access(self):
         """Enable security access on the target controller.
@@ -171,12 +173,12 @@ class PhisonExecutor:
         challenge = self._phison.phison_security_move_phase4()
         encrypted_part_bytes = self._get_encrypted_challenge_part(challenge)
         plain_part_bytes = self._get_plain_challenge_part(challenge)
-        decrypted_part_bytes = self._solve_rsa_challenge(encrypted_part_bytes)
-        plain_response = b''.join([decrypted_part_bytes, plain_part_bytes])
-        encrypted_response = self._generate_response(plain_response)
+        decrypted_part_bytes = self._solve_rsa_challenge(encrypted_part_bytes[::-1])
+        encrypted_response = self._generate_response(decrypted_part_bytes, plain_part_bytes)
         logger.info("Response generated. Sending response to controller (4 -> 5).")
         self._phison.phison_security_move_phase5(encrypted_response)
         logger.info("Security access granted.")
+
 
     def _solve_rsa_challenge(self, encrypted_part_bytes : bytes) -> bytes:
         """Decrypt the RSA-encrypted part of the challenge.
@@ -185,16 +187,19 @@ class PhisonExecutor:
         :type encrypted_part_bytes: bytes
         :return: The decrypted data.
         :rtype: bytes
+
+        .. note:: The encrypted part is in reverse order to what was received from
+            the controller.
         """
         encrypted_part = bytes_to_long(encrypted_part_bytes)
         modulus = bytes_to_long(self._modulus_bytes)
         exp = bytes_to_long(self._exp_bytes)
 
         return long_to_bytes(pow(encrypted_part, exp, modulus))[::-1]
+    
 
-
-    def memory_read(self, address : int, size : int) -> bytes:
-        """Read arbitrary memory from the controller.
+    def _phison_read_large(self, address : int, size : int) -> bytes:
+        """Wrapper function for Phison VSC arbitrary read without a size limit.
 
         :param address: The address to start reading from.
         :type address: int
@@ -203,29 +208,133 @@ class PhisonExecutor:
         :return: The bytes read.
         :rtype: bytes
         """
-        return self._phison.phison_memory_read(address, size)
+        read_data = b""
+        chunk_size = phison_defs.PHISON_RW_CHUNK_SIZE
 
-    def memory_write(self, address : int, data : bytes):
-        """Write arbitrary memory on the controller.
+        for curr_offset in range(0, size, chunk_size):
+            curr_read_size = min(chunk_size, size - curr_offset)
+            read_data += self._phison.phison_memory_read(address + curr_offset, curr_read_size)
+        
+        return read_data
+    
+
+    def _phison_write_large(self, address : int, data : bytes):
+        """Wrapper function for Phison VSC arbitrary write without a size limit.
 
         :param address: The address to start writing to.
         :type address: int
         :param data: The data to write.
         :type data: bytes
         """
-        self._phison.phison_memory_write(address, data)
+        chunk_size = phison_defs.PHISON_RW_CHUNK_SIZE
+        data_len = len(data)
+
+        for curr_offset in range(0, data_len, chunk_size):
+            curr_write_size = min(chunk_size, data_len - curr_offset)
+            self._phison.phison_memory_write(address + curr_offset, data[curr_offset : ][: curr_write_size])
+
+
+    def _issue_server_request(self, request : bytes) -> bytes:
+        """Issue a request to the Server.
+
+        :param request: The request bytes.
+        :type request: bytes
+        :raises phison_executor_defs.UnexpectedServerStatusException:
+            A non-success status code returned from the Server.
+        :return: The returned data from the Server.
+        :rtype: bytes
+        """
+        request_response_address = self._fw_defs['server_request_response_address']
+        self._phison_write_large(request_response_address, request)
+
+        # Trigger server logic
+        self._phison.phison_get_vsc_log_page(phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_C6, 0, 0x1000)
+
+        # Read Response (might be more than what's needed, maximum size is read for simplicity)
+        response = self._phison_read_large(request_response_address, server_defs.MAX_SERVER_RESPONSE_SIZE)
+
+        status, data = ServerInterface.parse_server_response(response)
+        if status != server_defs.ServerStatus.SERVER_SUCCESS:
+            raise phison_executor_defs.UnexpectedServerStatusException(f"Unexpected status {status.value} returned from server!")
+        
+        return data
+    
+
+    def memory_read(self, address : int, size : int) -> bytes:
+        """Read arbitrary controller memory.
+
+        :param address: The address to start reading from.
+        :type address: int
+        :param size: The number of bytes to read.
+        :type size: int
+        :raises ValueError: Non-positive read size value.
+        :return: The bytes read.
+        :rtype: bytes
+        """
+        if size <= 0:
+            raise ValueError(f"Cannot have non-positive read size {size}")
+        return self._issue_server_request(ServerInterface.build_read_memory_request(address, size))
+
+
+    def memory_write(self, address : int, data : bytes):
+        """Write arbitrary controller memory.
+
+        :param address: The address to start writing to.
+        :type address: int
+        :param data: The data to write.
+        :type data: bytes
+        :raises ValueError: Empty data.
+        """
+        if len(data) == 0:
+            raise ValueError(f"Cannot have empty data!")
+        return self._issue_server_request(ServerInterface.build_write_memory_request(address, data))
+
+    
+    def call_function(self, address : int, arg1 : int = 0, arg2 : int = 0, arg3 : int = 0, arg4 : int = 0) -> int:
+        """Call a function.
+
+        :param address: Address to call.
+        :type address: int
+        :param arg1: First argument.
+        :type size: int
+        :param arg2: Second argument.
+        :type size: int
+        :param arg3: Third argument.
+        :type size: int
+        :param arg4: Fourth argument.
+        :type size: int
+        :return: The 64-bit return value from the function.
+        :rtype: bytes
+        """
+        return int.from_bytes(self._issue_server_request(ServerInterface.build_call_function_request(address, arg1, arg2, arg3, arg4)), 'little')
+
 
     def execute_shellcode(self, shellcode_binary_path : str) -> int:
         """Execute a shellcode binary on the controller.
 
         :param shellcode_binary_path: The path to the binary to execute.
         :type shellcode_binary_path: str
-        :raises ValueError: For empty shellcode binary.
-        :return: The return value returned for the shellcode.
+        :raises ValueError: Empty shellcode binary.
+        :return: The 64-bit return value returned for the shellcode.
         :rtype: int
         """
         with open(shellcode_binary_path, 'rb') as f:
             shellcode_binary = f.read()
 
-        if len(shellcode_binary) == 0:
+        shellcode_binary_len = len(shellcode_binary)
+        if shellcode_binary_len == 0:
             raise ValueError("Empty shellcode provided!")
+        
+        self._issue_server_request(ServerInterface.build_initiate_data_transfer_request(shellcode_binary_len))
+        
+        # @todo move this to server_defs header and use only that.
+        chunk_size = server_defs.DEFAULT_MAX_SERVER_DATA_SIZE - server_defs.ServerTransferDataRequest.sizeof()
+
+        for chunk_offset in range(0, shellcode_binary_len, chunk_size):
+            chunk_end = min(shellcode_binary_len, chunk_offset + chunk_size)
+            current_data_chunk = shellcode_binary[chunk_offset : chunk_end]
+
+            # @todo maybe handle a possible exception in a more explicit manner?
+            self._issue_server_request(ServerInterface.build_transfer_data_request(chunk_offset, current_data_chunk))
+
+        return int.from_bytes(self._issue_server_request(ServerInterface.build_call_shellcode_request()), 'little')

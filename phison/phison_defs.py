@@ -33,6 +33,12 @@ class PhisonVSCSubCmd(Enum):
     PHISON_VSC_EXECUTE_STANDARD = 0xFF
 
 
+class PhisonVSCLogPageId(Enum):
+    """Phison VSC Log Page ID
+    """
+    PHISON_VSC_PAGE_ID_C6 = 0xC6
+
+
 # The magic value used for unlocking Phison VSC.
 VSC_UNLOCK_MAGIC = 0xFAEFFE6F
 
@@ -44,12 +50,15 @@ PHISON_SECURITY_CHALLENGE_SIZE = 0x200
 PHISON_SECURITY_CHALLENGE_ENCRYPTED_PART_SIZE = 0x100
 
 
-# Phison FW version size in bytes.
+# Phison FW version string size in bytes.
 PHISON_FW_NAME_SIZE = 8
-
 
 # NVMe buffer size.
 PHISON_NVME_BUFFER_SIZE = 0x20000
+
+# Maximum size that can be read/write at a time.
+PHISON_RW_CHUNK_SIZE = 0x100
+
 
 class Phase2RecoverableException(Exception):
     """Security Access phase 2 expected and recoverable exception.

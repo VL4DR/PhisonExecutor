@@ -4,6 +4,7 @@ from enum import Enum
 class NVMEOpcode(Enum):
     """Currently supported NVMe commands.
     """
+    NVME_GET_LOG_PAGE = 0x02
     NVME_IDENTIFY = 0x06
     NVME_FW_COMMIT = 0x10
     NVME_FW_DOWNLOAD = 0x11
@@ -40,6 +41,8 @@ class NVMEIdentifyBuffer(ctypes.Structure):
 		("fr", ctypes.c_char * 20),
 		("rest", ctypes.c_ubyte * NVME_IDENTIFY_REST_FIELDS_SIZE)
 	]
+
+    _pack_ = 1
 
 
 # These defines are not NVMe specific,

@@ -6,6 +6,13 @@ except ImportError:
 from common import nvme_common
 import phison.phison_defs as phison
 
+def phison_vsc(func):
+    def vsc_wrapper(self, *args, **kwargs):
+        self.unlock_vsc()
+        return func(self, *args, **kwargs)
+    return vsc_wrapper
+
+
 class PhisonLayer:
     """Phison VSC command layer.
 	"""
@@ -101,7 +108,45 @@ class PhisonLayer:
         if ret_code != 0:
             raise phison.PhisonVSCFailedException(
                 f"Unlocking VSC failed. Error code {hex(ret_code)}")
+        
+    
+    @phison_vsc
+    def phison_get_vsc_log_page(self, vsc_log_page_id : phison.PhisonVSCLogPageId, offset : int, size : int):
+        """Get Phison VSC log page data.
 
+        :param vsc_log_page_id: The log page ID to get data from.
+        :type vsc_log_page_id: phison.PhisonVSCLogPageId
+        :param offset: the offset, in bytes, within the target log page.
+        :type offset: int
+        :param size: the size, in bytes, of data to read from log page.
+            Must be aligned to 4.
+        :type size: int
+        :raises ValueError: Size to read is non-positive, not aligned to 4 or too big.
+        :raises ValueError: Offset is negative or too big.
+        :return: Log page data.
+        :rtype: bytes
+        """
+        if size % 4 != 0 or size <= 0 or size > nvme_common.NVME_MAX_TRANSFER_SIZE:
+            raise ValueError(f"Size {hex(size)} is invalid!")
+        
+        if offset < 0 or offset >= 2 ** 23:
+            raise ValueError(f"Offset {hex(offset)} is invalid!")
+        
+        read_log_page_args = {'cdw10' : size >> 2,
+                              'cdw12' : (nvme_common.NVMEOpcode.NVME_GET_LOG_PAGE.value << 8) |\
+                              phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
+                              'cdw13' : vsc_log_page_id.value,
+                              'cdw14' : offset << 9,
+                              'data_len' : size}
+        
+        ioctl_ret, log_data = self._send_phison_vsc(
+            phison.PhisonVSCCmd.PHISON_RECEIVE, 0, **read_log_page_args)
+        if ioctl_ret != 0:
+                raise phison.PhisonVSCFailedException(
+                    f"Log page could not be read.\
+                    Error code {hex(ioctl_ret)}")
+
+        return log_data
 
     def phison_fw_download(self, fw_file : str, chunk_size : int):
         """Download FW data to the controller via Phison VSC.
@@ -146,6 +191,7 @@ class PhisonLayer:
                     Error code {hex(ioctl_ret)}")
 
 
+    @phison_vsc
     def phison_fw_commit(self, slot : int, action : nvme_common.NVMECommitAction):
         """Commit a previously-downloaded firmware image via Phison VSC.
 
@@ -159,8 +205,6 @@ class PhisonLayer:
         if slot < 0 or slot > 7:
             raise ValueError("Valid firmware slot value is in the range 0 - 7")
 
-        self.unlock_vsc()
-
         commit_args = {'cdw12' : (nvme_common.NVMEOpcode.NVME_FW_COMMIT.value << 8) |\
                        phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
 		                'cdw13' : slot | (action.value << 3)}
@@ -170,6 +214,7 @@ class PhisonLayer:
             raise phison.PhisonVSCFailedException(f"Commit failed. Error code {hex(ret_code)}")
 
 
+    @phison_vsc
     def phison_identify(self, cns : nvme_common.NVMEIdentifyCNS,
                         csi : nvme_common.NVMECSI) -> nvme_common.NVMEIdentifyBuffer:
         """Identify command via Phison VSC.
@@ -181,11 +226,9 @@ class PhisonLayer:
 		:return: The NVMe identify data.
 		:rtype: nvme_common.NVMEIdentifyBuffer
 		"""
-        self.unlock_vsc()
-
         identify_buffer_size = ctypes.sizeof(nvme_common.NVMEIdentifyBuffer)
 
-        identify_args = {'cdw_10' : identify_buffer_size >> 2,
+        identify_args = {'cdw10' : identify_buffer_size >> 2,
 						'cdw12' :  (nvme_common.NVMEOpcode.NVME_IDENTIFY.value << 8) |\
                             phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
 						'cdw13' : cns.value,
@@ -222,7 +265,7 @@ class PhisonLayer:
             raise phison.Phase2UnexpectedException(
                 "Unexpected exception at 2nd phase, cannot continue") from exc
 
-
+    @phison_vsc
     def phison_security_move_phase3(self):
         """Move to Security Access phase 3 (switch to challenge reception).
 
@@ -241,6 +284,7 @@ class PhisonLayer:
                 f"Moving to phase 3 failed. Error code {hex(ret_code)}")
 
 
+    @phison_vsc
     def phison_security_move_phase4(self) -> bytes:
         """Move to Security Access phase 4 (receive challenge data).
 
@@ -250,8 +294,6 @@ class PhisonLayer:
 
         .. note:: The controller must be in phase 3.
 		"""
-        self.unlock_vsc()
-
         security_args = {'cdw10' : phison.PHISON_SECURITY_CHALLENGE_SIZE >> 2,
 						'cdw12' : phison.PhisonVSCSubCmd.PHISON_VSC_SECURITY_PHASE4.value,
 						'data_len' : phison.PHISON_SECURITY_CHALLENGE_SIZE}
@@ -266,7 +308,7 @@ class PhisonLayer:
 
         return ret_buf
 
-
+    @phison_vsc
     def phison_security_move_phase5(self, response : bytes):
         """Move to Security Access phase 4 (send response data).
 
@@ -283,8 +325,6 @@ class PhisonLayer:
                 f"Response must be of size \
                     {hex(phison.PHISON_SECURITY_CHALLENGE_SIZE)} bytes exactly!")
 
-        self.unlock_vsc()
-
         security_args = {'cdw10' : len(response) >> 2,
 						'cdw11' : len(response),
 						'cdw12' : phison.PhisonVSCSubCmd.PHISON_VSC_SECURITY_PHASE5.value,
@@ -299,6 +339,8 @@ class PhisonLayer:
                 raise phison.InvalidSecurityResponseException(exc_message)
             raise phison.Phase5GeneralException(exc_message)
 
+
+    @phison_vsc
     def phison_memory_write(self, address : int, data : bytes):
         """Write to arbitrary controller memory.
 
@@ -311,13 +353,10 @@ class PhisonLayer:
 
         .. note:: The controller must have entered Security Access.
 		"""
-        if len(data) > nvme_common.NVME_MAX_TRANSFER_SIZE:
-            raise ValueError("Size of write data cannot exceeded the max transfer size!")
-
-        self.unlock_vsc()
+        if len(data) > phison.PHISON_RW_CHUNK_SIZE:
+            raise ValueError("Size of write data cannot exceeded the max r/w size!")
 
         write_args = {'cdw10' : len(data) >> 2,
-						'cdw11' : 0,
 						'cdw12' : phison.PhisonVSCSubCmd.PHISON_VSC_MEM_WRITE.value,
 						'cdw13' : address,
 						'cdw14' : len(data),
@@ -329,6 +368,8 @@ class PhisonLayer:
             raise phison.PhisonVSCFailedException(
                 f"Memory write failed. Error code {hex(ret_code)}")
 
+
+    @phison_vsc
     def phison_memory_read(self, address : int, size : int) -> bytes:
         """Read from arbitrary controller memory.
 
@@ -344,14 +385,11 @@ class PhisonLayer:
         .. note::
         The controller must have entered Security Access.
 		"""
-        if size > nvme_common.NVME_MAX_TRANSFER_SIZE or size <= 0:
+        if size > phison.PHISON_RW_CHUNK_SIZE or size <= 0:
             raise ValueError(
-                "Read size cannot exceed the max transfer size, nor can it be non-positive!")
-
-        self.unlock_vsc()
+                "Read size cannot exceed the max r/w size, nor can it be non-positive!")
 
         read_args = {'cdw10' : size >> 2,
-						'cdw11' : 0,
 						'cdw12' : phison.PhisonVSCSubCmd.PHISON_VSC_MEM_READ.value,
 						'cdw13' : address,
 						'cdw14' : size,
