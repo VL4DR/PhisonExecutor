@@ -1,5 +1,5 @@
-import construct as cs
 from enum import Enum
+import construct as cs
 
 # Server magic used for requests/responses
 DEFAULT_MAGIC = 0xDEADBEEF

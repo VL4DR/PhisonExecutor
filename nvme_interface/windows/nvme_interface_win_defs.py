@@ -3,10 +3,6 @@ import ctypes.wintypes as wintypes
 from ctypes import windll
 from enum import Enum
 
-class IoctlMethod(Enum):
-	IOCTL_METHOD_SCSI_PASSTHROUGH_DIRECT = 0x00
-	IOCTL_METHOD_NVME_STORAGE_PROTOCOL = 0x01
-
 STORAGE_PROTOCOL_STRUCTURE_VERSION = 0x01
 IOCTL_STORAGE_PROTOCOL_COMMAND = 0x002DD3C0
 IOCTL_SCSI_PASSTHROUGH_DIRECT = 0x0004D014
@@ -25,19 +21,34 @@ CDB_SUB_CODE_SEND_SQ = 0x40000000
 CDB_SUB_CODE_TRIGGER = 0x20000
 SCSI_TRIGGER_BUFFER_LENGTH = 0x200
 
+class IoctlMethod(Enum):
+    """Windows driver IO Control methods.
+	"""
+    IOCTL_METHOD_SCSI_PASSTHROUGH_DIRECT = 0x00
+    IOCTL_METHOD_NVME_STORAGE_PROTOCOL = 0x01
+
+
 class DataDirection(Enum):
-	DIRECTION_OUT = 0
-	DIRECTION_IN = 1
+    """Data transfer direction.
+	"""
+    DIRECTION_OUT = 0
+    DIRECTION_IN = 1
+
 
 class CDBOperation(Enum):
-	SCSI_SEND_SQ = 0
-	SCSI_TRIGGER = 1
-	SCSI_WRITE_DATA = 2
-	SCSI_READ_DATA = 3
+    """CDB operation types.
+	"""
+    SCSI_SEND_SQ = 0
+    SCSI_TRIGGER = 1
+    SCSI_WRITE_DATA = 2
+    SCSI_READ_DATA = 3
+
 
 class NVMECmd(ctypes.Structure):
-	_pack_ = 1
-	_fields_ = [('opcode', ctypes.c_ubyte),
+    """NVMe command structure.
+	"""
+    _pack_ = 1
+    _fields_ = [('opcode', ctypes.c_ubyte),
 				('zero0', ctypes.c_ubyte * 3),
 				('nsid', ctypes.c_uint32),
 				('zero1', ctypes.c_ubyte * 32),
@@ -48,8 +59,11 @@ class NVMECmd(ctypes.Structure):
 				('cdw14', ctypes.c_uint32),
 				('cdw15', ctypes.c_uint32)]
 
+
 class StorageProtocolCommand(ctypes.Structure):
-	_fields_ = [('version', wintypes.DWORD),
+    """Storage Protocol command structure.
+	"""
+    _fields_ = [('version', wintypes.DWORD),
 				('length', wintypes.DWORD),
 				('protocol_type', wintypes.DWORD),
 				('flags', wintypes.DWORD),
@@ -70,30 +84,11 @@ class StorageProtocolCommand(ctypes.Structure):
 				('reserved1', 2 * wintypes.DWORD),
 				('command', ctypes.c_ubyte)]
 
-class Guid(ctypes.Structure):
-	_fields_ = [('data1', ctypes.c_uint32),
-				('data2', ctypes.c_uint16),
-				('data3', ctypes.c_uint16),
-				('data4', 8 * ctypes.c_ubyte)]
 
-class SPDevInfoData(ctypes.Structure):
-	_fields_ = [('cb_size', wintypes.DWORD),
-				('class_guid', Guid),
-				('dev_inst', wintypes.DWORD),
-				('reserved', ctypes.POINTER(ctypes.c_ulong))]
-
-class SPDeviceInterfaceData(ctypes.Structure):
-	_fields_ = [('cb_size', wintypes.DWORD),
-				('interface_class_guid', Guid),
-				('flags', wintypes.DWORD),
-				('reserved', ctypes.POINTER(ctypes.c_ulong))]
-
-class SPDeviceInterfaceDetailDataA(ctypes.Structure):
-	_fields_ = [('cb_size', wintypes.DWORD),
-				('device_path', (ctypes.c_char * 1))]
-	
 class SCSIPassThroughDirect(ctypes.Structure):
-	_fields_ = [
+    """Passthrough SCSI direct mode frame structure.
+    """
+    _fields_ = [
 		('length', ctypes.c_uint16),
 		('scsi_status', ctypes.c_uint8),
 		('path_id', ctypes.c_uint8),
@@ -109,9 +104,12 @@ class SCSIPassThroughDirect(ctypes.Structure):
 		('cdb', (ctypes.c_ubyte * SCSI_CDB_LENGTH))
 	]
 
+
 class SCSICDBData(ctypes.Structure):
-	_pack_ = 1
-	_fields_ = [
+    """SCSI CDB data structure.
+	"""
+    _pack_ = 1
+    _fields_ = [
 		('main_code', ctypes.c_uint32),
 		('unk0', ctypes.c_uint8),
 		('unk1', ctypes.c_uint8),
@@ -120,40 +118,8 @@ class SCSICDBData(ctypes.Structure):
 		('unk3', ctypes.c_uint16),
 	]
 
-class StorageDeviceNumber(ctypes.Structure):
-	_fields_ = [('device_type', ctypes.c_uint16),
-				('device_number', wintypes.DWORD),
-				('partition_number', wintypes.DWORD)]
 
-class Guid(ctypes.Structure):
-	_fields_ = [('data1', ctypes.c_uint32),
-				('data2', ctypes.c_uint16),
-				('data3', ctypes.c_uint16),
-				('data4', 8 * ctypes.c_ubyte)]
-
-class SPDevInfoData(ctypes.Structure):
-	_fields_ = [('cb_size', wintypes.DWORD),
-				('class_guid', Guid),
-				('dev_inst', wintypes.DWORD),
-				('reserved', ctypes.POINTER(ctypes.c_ulong))]
-
-class SPDeviceInterfaceData(ctypes.Structure):
-	_fields_ = [('cb_size', wintypes.DWORD),
-				('interface_class_guid', Guid),
-				('flags', wintypes.DWORD),
-				('reserved', ctypes.POINTER(ctypes.c_ulong))]
-
-MAX_DEVICE_PATH_SIZE = 0x400
-SP_DEVICE_INTERFACE_DETAIL_DATA_SIZEOF = 8
-class SPDeviceInterfaceDetailData(ctypes.Structure):
-	_fields_ = [('cb_size', wintypes.DWORD),
-				('device_path', (ctypes.c_char * MAX_DEVICE_PATH_SIZE))]
-
-class DiGetClassFlags(Enum):
-	DIGCG_DEFAULT = 0x00000001
-	DIGCF_PRESENT = 0x00000002
-	DIGCF_DEVICEINTERFACE = 0x00000010
-
+# Windows file-related definitions.
 FILE_SHARE_READ = 0x00000001
 FILE_SHARE_WRITE = 0x00000002
 
@@ -166,11 +132,7 @@ FILE_ATTRIBUTE_NORMAL = 0x00000080
 
 INVALID_HANDLE_VALUE = -1
 
-ERROR_INSUFFICIENT_BUFFER = 0x0000007A
-ERROR_NO_MORE_ITEMS = 0x00000103
-
-GUID_DEVINTERFACE_DISK = Guid(0x53F56307, 0xB6BF, 0x11D0, (ctypes.c_ubyte * 8).from_buffer_copy(b"\x94\xF2\x00\xA0\xC9\x1E\xFB\x8B"))
-
+# CreateFileA WinAPI definition.
 CreateFileA = windll.kernel32.CreateFileA
 CreateFileA.argtypes = [
 		wintypes.LPCSTR,
@@ -182,12 +144,14 @@ CreateFileA.argtypes = [
 		wintypes.HANDLE]
 CreateFileA.restype = wintypes.HANDLE
 
+# CloseFileA WinAPI definition.
 CloseHandle = windll.kernel32.CloseHandle
 CloseHandle.argtypes = [
 		wintypes.HANDLE
 ]
 CloseHandle.restype = None
 
+# DeviceIoControl WinAPI definition.
 DeviceIoControl = windll.kernel32.DeviceIoControl
 DeviceIoControl.argtypes = [
 		wintypes.HANDLE,

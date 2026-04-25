@@ -196,7 +196,7 @@ class PhisonExecutor:
         exp = bytes_to_long(self._exp_bytes)
 
         return long_to_bytes(pow(encrypted_part, exp, modulus))[::-1]
-    
+
 
     def _phison_read_large(self, address : int, size : int) -> bytes:
         """Wrapper function for Phison VSC arbitrary read without a size limit.
@@ -214,9 +214,9 @@ class PhisonExecutor:
         for curr_offset in range(0, size, chunk_size):
             curr_read_size = min(chunk_size, size - curr_offset)
             read_data += self._phison.phison_memory_read(address + curr_offset, curr_read_size)
-        
+
         return read_data
-    
+
 
     def _phison_write_large(self, address : int, data : bytes):
         """Wrapper function for Phison VSC arbitrary write without a size limit.
@@ -231,7 +231,8 @@ class PhisonExecutor:
 
         for curr_offset in range(0, data_len, chunk_size):
             curr_write_size = min(chunk_size, data_len - curr_offset)
-            self._phison.phison_memory_write(address + curr_offset, data[curr_offset : ][: curr_write_size])
+            self._phison.phison_memory_write(
+                address + curr_offset, data[curr_offset : ][: curr_write_size])
 
 
     def _issue_server_request(self, request : bytes) -> bytes:
@@ -248,17 +249,20 @@ class PhisonExecutor:
         self._phison_write_large(request_response_address, request)
 
         # Trigger server logic
-        self._phison.phison_get_vsc_log_page(phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_C6, 0, 0x1000)
+        self._phison.phison_get_vsc_log_page(
+            phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_C6, 0, 0x1000)
 
         # Read Response (might be more than what's needed, maximum size is read for simplicity)
-        response = self._phison_read_large(request_response_address, server_defs.MAX_SERVER_RESPONSE_SIZE)
+        response = self._phison_read_large(
+            request_response_address, server_defs.MAX_SERVER_RESPONSE_SIZE)
 
         status, data = ServerInterface.parse_server_response(response)
         if status != server_defs.ServerStatus.SERVER_SUCCESS:
-            raise phison_executor_defs.UnexpectedServerStatusException(f"Unexpected status {status.value} returned from server!")
-        
+            raise phison_executor_defs.UnexpectedServerStatusException(
+                f"Unexpected status {status.value} returned from server!")
+
         return data
-    
+
 
     def memory_read(self, address : int, size : int) -> bytes:
         """Read arbitrary controller memory.
@@ -289,8 +293,13 @@ class PhisonExecutor:
             raise ValueError(f"Cannot have empty data!")
         return self._issue_server_request(ServerInterface.build_write_memory_request(address, data))
 
-    
-    def call_function(self, address : int, arg1 : int = 0, arg2 : int = 0, arg3 : int = 0, arg4 : int = 0) -> int:
+
+    def call_function(self,
+                      address : int,
+                      arg1 : int = 0,
+                      arg2 : int = 0,
+                      arg3 : int = 0,
+                      arg4 : int = 0) -> int:
         """Call a function.
 
         :param address: Address to call.
@@ -306,7 +315,8 @@ class PhisonExecutor:
         :return: The 64-bit return value from the function.
         :rtype: bytes
         """
-        return int.from_bytes(self._issue_server_request(ServerInterface.build_call_function_request(address, arg1, arg2, arg3, arg4)), 'little')
+        return int.from_bytes(self._issue_server_request(
+            ServerInterface.build_call_function_request(address, arg1, arg2, arg3, arg4)), 'little')
 
 
     def execute_shellcode(self, shellcode_binary_path : str) -> int:
@@ -324,17 +334,21 @@ class PhisonExecutor:
         shellcode_binary_len = len(shellcode_binary)
         if shellcode_binary_len == 0:
             raise ValueError("Empty shellcode provided!")
-        
-        self._issue_server_request(ServerInterface.build_initiate_data_transfer_request(shellcode_binary_len))
-        
+
+        self._issue_server_request(
+            ServerInterface.build_initiate_data_transfer_request(shellcode_binary_len))
+
         # @todo move this to server_defs header and use only that.
-        chunk_size = server_defs.DEFAULT_MAX_SERVER_DATA_SIZE - server_defs.ServerTransferDataRequest.sizeof()
+        chunk_size = server_defs.DEFAULT_MAX_SERVER_DATA_SIZE -\
+            server_defs.ServerTransferDataRequest.sizeof()
 
         for chunk_offset in range(0, shellcode_binary_len, chunk_size):
             chunk_end = min(shellcode_binary_len, chunk_offset + chunk_size)
             current_data_chunk = shellcode_binary[chunk_offset : chunk_end]
 
             # @todo maybe handle a possible exception in a more explicit manner?
-            self._issue_server_request(ServerInterface.build_transfer_data_request(chunk_offset, current_data_chunk))
+            self._issue_server_request(
+                ServerInterface.build_transfer_data_request(chunk_offset, current_data_chunk))
 
-        return int.from_bytes(self._issue_server_request(ServerInterface.build_call_shellcode_request()), 'little')
+        return int.from_bytes(self._issue_server_request(
+            ServerInterface.build_call_shellcode_request()), 'little')
