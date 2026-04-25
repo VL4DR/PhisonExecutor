@@ -39,10 +39,10 @@ EIFM800_DEFS = {
 	'modulus_path' : 'resources/EIFM80.0/modulus.bin',
 	'exp_path' : 'resources/EIFM80.0/exp.bin',
     'server_binary_path' : 'resources/EIFM80.0/server.bin',
-    'server_base_address' : 0, # @todo fill correct value
+    'server_base_address' : 0x4016A000,
     'server_trampoline_binary_path' : 'resources/EIFM80.0/trampoline.bin',
-    'server_trampoline_address' : 0, # @todo fill correct value
-    'server_request_response_address' : 0 # @todo fill correct value
+    'server_trampoline_address' : 0x40153230,
+    'server_request_response_address' : 0x4016B000
 }
 
 
