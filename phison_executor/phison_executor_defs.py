@@ -3,10 +3,10 @@ ECFM322_DEFS = {
 	'modulus_path' : 'resources/ECFM32.2/modulus.bin',
 	'exp_path' : 'resources/ECFM32.2/exp.bin',
 	'server_binary_path' : 'resources/ECFM32.2/server.bin',
-    'server_base_address' : 0, # @todo fill correct value
+    'server_base_address' : 0x4016A000,
     'server_trampoline_binary_path' : 'resources/ECFM32.2/trampoline.bin',
-    'server_trampoline_address' : 0, # @todo fill correct value
-    'server_request_response_address' : 0 # @todo fill correct value
+    'server_trampoline_address' : 0x4011B84E,
+    'server_request_response_address' : 0x4016B000
 }
 
 
