@@ -4,6 +4,7 @@ from enum import Enum
 class PhisonCRCData(ctypes.Structure):
     """The Phison command data that CRC is done on.
 	"""
+    _pack_ = 1
     _fields_ = [('opcode', ctypes.c_ubyte),
 				('zero', ctypes.c_ubyte * 39),
 				('cdw10', ctypes.c_uint32),
@@ -36,22 +37,33 @@ class PhisonVSCSubCmd(Enum):
 class PhisonVSCLogPageId(Enum):
     """Phison VSC Log Page ID
     """
+    PHISON_VSC_PAGE_ID_SYSTEM_INFO = 0xC2
     PHISON_VSC_PAGE_ID_C6 = 0xC6
 
 
+# Phison FW version string size in bytes.
+PHISON_FW_NAME_SIZE = 8
+
+
+class PhisonSystemInfo(ctypes.Structure):
+    """Phison System Information structure.
+    """
+    _pack_ = 1
+    _fields_ = [('unk0', ctypes.c_ubyte * 410),
+                ('fw_ver', ctypes.c_ubyte * PHISON_FW_NAME_SIZE),
+                ('unk1', ctypes.c_ubyte * 3678)]
+
+# Number of bytes in the system info structure
+PHISON_SYSTEM_INFO_SIZE = 0x1000
+
 # The magic value used for unlocking Phison VSC.
 VSC_UNLOCK_MAGIC = 0xFAEFFE6F
-
 
 # Security Access related definitions.
 PHISON_SECURITY_AES_IV = b"\x82\xC7\x15\x82\x38\xAF\xE2\x08\xE1\x26\x57\xEF\x09\x1A\x73\x99"
 PHISON_SECURITY_AES_KEY_SIZE = 0x20
 PHISON_SECURITY_CHALLENGE_SIZE = 0x200
 PHISON_SECURITY_CHALLENGE_ENCRYPTED_PART_SIZE = 0x100
-
-
-# Phison FW version string size in bytes.
-PHISON_FW_NAME_SIZE = 8
 
 # NVMe buffer size.
 PHISON_NVME_BUFFER_SIZE = 0x20000

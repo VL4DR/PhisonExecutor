@@ -1,5 +1,5 @@
+import ctypes
 from enum import Enum
-import construct as cs
 
 # Server magic used for requests/responses
 DEFAULT_MAGIC = 0xDEADBEEF
@@ -36,60 +36,70 @@ class ServerStatus(Enum):
     SERVER_INVALID_STATE = 6
 
 
-# Every Server request starts with this header.
-ServerRequestHeader = cs.Struct(
-    "magic" / cs.Int32ul,
-    "opcode" / cs.Int32ul,
-    "length" / cs.Int32ul,
-    "subcommand" / cs.Int32ul,
-    "integrity" / cs.Int32ul,
-)
+class ServerRequestHeader(ctypes.Structure):
+    """Every Server request starts with this header.
+    """
+    _pack_ = 1
+    _fields_ = [('magic', ctypes.c_uint32),
+                ('opcode', ctypes.c_uint32),
+                ('length', ctypes.c_uint32),
+                ('subcommand', ctypes.c_uint32),
+                ('integrity', ctypes.c_uint32)]
 
 
-# Every Server response starts with this header.
-ServerResponseHeader = cs.Struct(
-    "magic" / cs.Int32ul,
-    "opcode" / cs.Int32ul,
-    "length" / cs.Int32ul,
-    "status" / cs.Int32ul,
-    "integrity" / cs.Int32ul,
-)
+class ServerResponseHeader(ctypes.Structure):
+    """Every Server response starts with this header.
+    """
+    _pack_ = 1
+    _fields_ = [('magic', ctypes.c_uint32),
+                ('opcode', ctypes.c_uint32),
+                ('length', ctypes.c_uint32),
+                ('status', ctypes.c_uint32),
+                ('integrity', ctypes.c_uint32)]
+    
+
+class ServerReadRequest(ctypes.Structure):
+    """Server Read Memory request structure.
+    """
+    _pack_ = 1
+    _fields_ = [('address', ctypes.c_uint64),
+                ('size', ctypes.c_uint32)]
+    
+
+class ServerWriteRequest(ctypes.Structure):
+    """Server Write Memory request structure.
+    """
+    _pack_ = 1
+    _fields_ = [('address', ctypes.c_uint64)]
 
 
-# Server Read Memory request structure.
-ServerReadRequest = cs.Struct(
-    "address" / cs.Int64ul,
-    "size" / cs.Int32ul
-)
+class ServerCallRequest(ctypes.Structure):
+    """Server Call request structure.
+    """
+    _pack_ = 1
+    _fields_ = [('address', ctypes.c_uint64),
+                ('arg1', ctypes.c_uint64),
+                ('arg2', ctypes.c_uint64),
+                ('arg3', ctypes.c_uint64),
+                ('arg4', ctypes.c_uint64)]
+    
+
+class ServerTransferInitiateRequest(ctypes.Structure):
+    """Server Transfer Initiate request structure.
+    """
+    _pack_ = 1
+    _fields_ = [('shellcode_size', ctypes.c_uint32)]
 
 
-# Server Write Memory request structure.
-ServerWriteRequest = cs.Struct(
-    "address" / cs.Int64ul
-)
-
-
-# Server Call request structure.
-ServerCallRequest = cs.Struct(
-    "address" / cs.Int64ul,
-    "arg1" / cs.Int64ul,
-    "arg2" / cs.Int64ul,
-    "arg3" / cs.Int64ul,
-    "arg4" / cs.Int64ul
-)
-
-
-# Server Transfer Initiate request structure.
-ServerTransferInitiateRequest = cs.Struct(
-    "shellcode_size" / cs.Int32ul
-)
-
-
-# Server Transfer Data request structure.
-ServerTransferDataRequest = cs.Struct(
-    "offset" / cs.Int32ul
-)
-
+class ServerTransferDataRequest(ctypes.Structure):
+    """Server Transfer Data request structure.
+    """
+    _pack_ = 1
+    _fields_ = [('offset', ctypes.c_uint32)]
+    
 
 # The maximum size possible for a single server response frame.
-MAX_SERVER_RESPONSE_SIZE = ServerResponseHeader.sizeof() + DEFAULT_MAX_SERVER_DATA_SIZE
+MAX_SERVER_RESPONSE_SIZE = ctypes.sizeof(ServerResponseHeader) + DEFAULT_MAX_SERVER_DATA_SIZE
+
+# The maximum size of the data chunk that may be transferred at a time.
+MAX_TRANSFER_CHUNK_SIZE = DEFAULT_MAX_SERVER_DATA_SIZE - ctypes.sizeof(ServerTransferDataRequest)

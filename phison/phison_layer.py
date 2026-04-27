@@ -96,6 +96,36 @@ class PhisonLayer:
         return self._nvme.nvme_send_command(opcode.value, nsid, **kwargs)
 
 
+    @phison_vsc
+    def _phison_fw_download_chunk(self, offset : int, chunk_data : bytes):
+        """Send a Phison VSC command.
+
+		:param chunk_data: The Phison VSC command code.
+		:type chunk_data: phison.PhisonVSCCmd
+        :raises phison.PhisonVSCFailedException: Error in VSC processing of a chunk.
+        :raises ValueError: offset is negative.
+        :raises ValueError: length of chunk is invalid.
+
+        .note :: length of chunk data must be >= 4 and <= nvme_common.NVME_MAX_TRANSFER_SIZE.
+        """
+        assert offset >= 0
+        chunk_size = len(chunk_data)
+        assert chunk_size >= 4 and chunk_size <= nvme_common.NVME_MAX_TRANSFER_SIZE
+
+        download_args = {'cdw10' : chunk_size >> 2,
+                         'cdw12' : (nvme_common.NVMEOpcode.NVME_FW_DOWNLOAD.value << 8) |\
+                            phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
+                            'cdw14' : offset >> 2,
+                            'data' : chunk_data,
+                            'data_len' : chunk_size}
+        
+        ioctl_ret, _ = self._send_phison_vsc(
+                phison.PhisonVSCCmd.PHISON_SEND, 0, **download_args)
+        if ioctl_ret != 0:
+            raise phison.PhisonVSCFailedException(
+                f"Chunk at offset {offset}, could not be downloaded.\
+                    Error code {hex(ioctl_ret)}")
+
     def unlock_vsc(self):
         """Unlock processing of the next VSC command.
 
@@ -131,7 +161,7 @@ class PhisonLayer:
         
         if offset < 0 or offset >= 2 ** 23:
             raise ValueError(f"Offset {hex(offset)} is invalid!")
-        
+
         read_log_page_args = {'cdw10' : size >> 2,
                               'cdw12' : (nvme_common.NVMEOpcode.NVME_GET_LOG_PAGE.value << 8) |\
                               phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
@@ -148,47 +178,36 @@ class PhisonLayer:
 
         return log_data
 
-    def phison_fw_download(self, fw_file : str, chunk_size : int):
+    def phison_fw_download(self, fw_file_path : str, chunk_size : int):
         """Download FW data to the controller via Phison VSC.
 
-		:param fw_file: The path to FW binary.
-		:type fw_file: str
+		:param fw_file_path: The path to FW binary.
+		:type fw_file_path: str
 		:param chunk_size: The chunk size to use for downloading.
 		:type chunk_size: int
         :raises ValueError: Invalid chunk size or empty FW file.
         :raises phison.PhisonVSCFailedException: Error in VSC processing.
+
+        .. note:: chunk_size must be >= 4 and <= nvme_common.NVME_MAX_TRANSFER_SIZE.
 		"""
-        if chunk_size < 0 or chunk_size > nvme_common.NVME_MAX_TRANSFER_SIZE:
+        if chunk_size < 4 or chunk_size > nvme_common.NVME_MAX_TRANSFER_SIZE:
             raise ValueError("Invalid chunk size provided!")
 
-        with open(fw_file, 'rb') as f:
+        with open(fw_file_path, 'rb') as f:
             fw_data = f.read()
 
-        if len(fw_data) == 0:
+        fw_data_len = len(fw_data)
+        if fw_data_len == 0:
             raise ValueError("Empty file provided!")
 
-        if chunk_size > len(fw_data):
-            chunk_size = len(fw_data)
+        if chunk_size > fw_data_len:
+            chunk_size = fw_data_len
 
-        for curr_offset in range(0, len(fw_data), chunk_size):
-            curr_chunk_size = min(chunk_size, len(fw_data) - curr_offset)
-            curr_chunk = fw_data[curr_offset : curr_offset + curr_chunk_size]
+        for curr_offset in range(0, fw_data_len, chunk_size):
+            curr_chunk_size = min(chunk_size, fw_data_len - curr_offset)
+            curr_chunk = fw_data[curr_offset : ][ : curr_chunk_size]
 
-            self.unlock_vsc()
-
-            download_args = {'cdw10' : curr_chunk_size >> 2,
-                             'cdw12' : (nvme_common.NVMEOpcode.NVME_FW_DOWNLOAD.value << 8) |\
-                                phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
-							'cdw14' : curr_offset >> 2,
-							'data' : curr_chunk,
-							'data_len' : curr_chunk_size}
-
-            ioctl_ret, _ = self._send_phison_vsc(
-                phison.PhisonVSCCmd.PHISON_SEND, 0, **download_args)
-            if ioctl_ret != 0:
-                raise phison.PhisonVSCFailedException(
-                    f"Chunk at offset {curr_offset}, could not be downloaded.\
-                    Error code {hex(ioctl_ret)}")
+            self._phison_fw_download_chunk(curr_offset, curr_chunk)
 
 
     @phison_vsc
@@ -352,9 +371,12 @@ class PhisonLayer:
         :raises phison.PhisonVSCFailedException: Error in VSC processing.
 
         .. note:: The controller must have entered Security Access.
+        .. note:: size of data must be >= 4 and <= phison.PHISON_RW_CHUNK_SIZE.
 		"""
-        if len(data) > phison.PHISON_RW_CHUNK_SIZE:
-            raise ValueError("Size of write data cannot exceeded the max r/w size!")
+        data_len = len(data)
+        if data_len > phison.PHISON_RW_CHUNK_SIZE or data_len < 4 :
+            raise ValueError(
+                "Size of write data cannot exceeded the max r/w size, not can it be less than 4!")
 
         write_args = {'cdw10' : len(data) >> 2,
 						'cdw12' : phison.PhisonVSCSubCmd.PHISON_VSC_MEM_WRITE.value,
@@ -382,12 +404,12 @@ class PhisonLayer:
         :return: The data read.
         :rtype: bytes
 
-        .. note::
-        The controller must have entered Security Access.
+        .. note:: The controller must have entered Security Access.
+        .. note:: read size must be >= 4 and <= phison.PHISON_RW_CHUNK_SIZE.
 		"""
-        if size > phison.PHISON_RW_CHUNK_SIZE or size <= 0:
+        if size > phison.PHISON_RW_CHUNK_SIZE or size < 4:
             raise ValueError(
-                "Read size cannot exceed the max r/w size, nor can it be non-positive!")
+                "Read size cannot exceed the max r/w size, nor can it be less than 4!")
 
         read_args = {'cdw10' : size >> 2,
 						'cdw12' : phison.PhisonVSCSubCmd.PHISON_VSC_MEM_READ.value,

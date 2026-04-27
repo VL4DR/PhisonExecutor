@@ -1,15 +1,24 @@
+import ctypes
 from server_interface import server_defs
 
 class ServerInterface:
-
+    """_summary_
+    Builder and Parser class for Interfacing with the Server.
+    """
     @staticmethod
     def _build_server_request(opcode : int, request_data : bytes) -> bytes:
         """Build the entire server request including metadata.
         """
-        magic = server_defs.DEFAULT_MAGIC
-        request_header = server_defs.ServerRequestHeader.build(
-            dict(magic=magic, opcode=opcode, length=len(request_data), subcommand=0, integrity=0))
-        return b''.join([request_header, request_data])
+        request_fields = {
+            'magic' : server_defs.DEFAULT_MAGIC,
+            'opcode' : opcode,
+            'length' : len(request_data),
+            'subcommand' : 0,
+            'integrity' : 0
+        }
+
+        request_header = server_defs.ServerRequestHeader(**request_fields)
+        return b''.join([bytes(request_header), request_data])
 
 
     @staticmethod
@@ -21,8 +30,8 @@ class ServerInterface:
         :return: Server status code and data.
         :rtype: tuple[server_defs.ServerStatus, bytes]
         """
-        response_header = server_defs.ServerResponseHeader.parse(response)
-        response_header_length = server_defs.ServerResponseHeader.sizeof()
+        response_header = server_defs.ServerResponseHeader.from_buffer_copy(response)
+        response_header_length = ctypes.sizeof(server_defs.ServerResponseHeader)
         data_length = response_header.length
         response_data = response[response_header_length : ][ : data_length]
 
@@ -40,9 +49,12 @@ class ServerInterface:
         :return: Raw request bytes.
         :rtype: bytes
         """
-        read_request_data = server_defs.ServerReadRequest.build(dict(address=address, size=size))
+        read_request_data = server_defs.ServerReadRequest(
+            **{'address' : address, 'size' : size}
+        )
         read_request = ServerInterface._build_server_request(
-            server_defs.ServerOpcode.SERVER_OPCODE_READ.value, read_request_data)
+            server_defs.ServerOpcode.SERVER_OPCODE_READ.value,
+            bytes(read_request_data))
 
         return read_request
 
@@ -59,7 +71,8 @@ class ServerInterface:
         :rtype: bytes
         """
         write_request_data = b''.join(
-            [server_defs.ServerWriteRequest.build(dict(address=address)), data])
+            [bytes(server_defs.ServerWriteRequest(**{'address' : address})),
+             data])
         write_request = ServerInterface._build_server_request(
             server_defs.ServerOpcode.SERVER_OPCODE_WRITE.value, write_request_data)
 
@@ -87,10 +100,17 @@ class ServerInterface:
         :return: Raw request bytes.
         :rtype: bytes
         """
-        call_request_data = server_defs.ServerCallRequest.build(
-            dict(address=address, arg1=arg1, arg2=arg2, arg3=arg3, arg4=arg4))
+        call_request_fields = {
+            'address' : address,
+            'arg1' : arg1,
+            'arg2' : arg2,
+            'arg3' : arg3,
+            'arg4' : arg4
+        }
+        call_request_data = server_defs.ServerCallRequest(**call_request_fields)
         call_request = ServerInterface._build_server_request(
-            server_defs.ServerOpcode.SERVER_OPCODE_CALL.value, call_request_data)
+            server_defs.ServerOpcode.SERVER_OPCODE_CALL.value,
+            bytes(call_request_data))
 
         return call_request
 
@@ -104,11 +124,12 @@ class ServerInterface:
         :return: Raw request bytes.
         :rtype: bytes
         """
-        initiate_data_transfer_data = server_defs.ServerTransferInitiateRequest.build(
-            dict(shellcode_size=shellcode_size))
+        initiate_data_transfer_data = server_defs.ServerTransferInitiateRequest(
+            **{'shellcode_size' : shellcode_size}
+        )
         initiate_data_transfer_request = ServerInterface._build_server_request(
             server_defs.ServerOpcode.SERVER_OPCODE_TRANSFER_INITIATE.value,
-            initiate_data_transfer_data)
+            bytes(initiate_data_transfer_data))
 
         return initiate_data_transfer_request
 
@@ -125,7 +146,9 @@ class ServerInterface:
         :rtype: bytes
         """
         transfer_data_request_data = b''.join(
-            [server_defs.ServerTransferDataRequest.build(dict(offset=offset)), data])
+            [bytes(server_defs.ServerTransferDataRequest(
+                **{'offset' : offset})),
+                data])
         transfer_data_request = ServerInterface._build_server_request(
             server_defs.ServerOpcode.SERVER_OPCODE_TRANSFER_DATA.value, transfer_data_request_data)
 

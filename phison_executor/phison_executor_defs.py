@@ -54,10 +54,6 @@ PHISON_EXECUTOR_DEFS = {
 }
 
 
-# The chunk size used by the Executor when doing large reads/writes.
-PHISON_EXECUTOR_RW_CHUNK_SIZE = 0x1000
-
-
 class FirmwareUnsupportedException(Exception):
     """Firmware version is not supported.
     """

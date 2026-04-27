@@ -1,5 +1,6 @@
 import time
 import logging
+import ctypes
 from functools import reduce
 from Crypto.Cipher import AES
 from Crypto.Util.number import bytes_to_long, long_to_bytes
@@ -22,6 +23,7 @@ class PhisonExecutor:
             raise phison_executor_defs.FirmwareUnsupportedException(
                 f"FW version {fw_version} is currently unsupported!")
 
+        logger.info(f"Controller FW version {fw_version}")
         self._fw_defs = phison_executor_defs.PHISON_EXECUTOR_DEFS[fw_version]
 
         with open(self._fw_defs['modulus_path'], 'rb') as f:
@@ -70,6 +72,8 @@ class PhisonExecutor:
         :type buffer_b: bytes
         :return: The result of xoring the byte sequences.
         :rtype: bytes
+
+        .. note:: Both buffers must be of equal size.
         """
         assert len(buffer_a) == len(buffer_b)
         return bytes([buffer_a[i] ^ buffer_b[i] for i in range(len(buffer_a))])
@@ -93,15 +97,16 @@ class PhisonExecutor:
 
 
     def _get_fw_version(self) -> str:
-        """Get controller FW version.
+        """Get Phison-named controller FW version.
 
         :return: The FW version string.
         :rtype: str
         """
-        identify_info = self._phison.phison_identify(
-            nvme_common.NVMEIdentifyCNS.NVME_CNS_CONTROLLER,
-            nvme_common.NVMECSI.NVME_CSI_NVM)
-        return identify_info.fr[ : phison_defs.PHISON_FW_NAME_SIZE].decode('ascii')
+        system_info_size = ctypes.sizeof(phison_defs.PhisonSystemInfo)
+        system_info_bytes = self._phison.phison_get_vsc_log_page(
+            phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_SYSTEM_INFO, 0, system_info_size)
+        system_info = phison_defs.PhisonSystemInfo.from_buffer_copy(system_info_bytes)
+        return bytes(system_info.fw_ver).decode('ascii')
 
 
     def _install_server(self):
@@ -163,7 +168,7 @@ class PhisonExecutor:
 
 
     def _enable_security_access(self):
-        """Enable security access on the target controller.
+        """Enable Security Access on the target controller.
         """
         logger.info("Initiaing phase 1 -> 2 routine.")
         self._phison.phison_security_move_phase2(self._fw_defs['security_fw'])
@@ -338,9 +343,7 @@ class PhisonExecutor:
         self._issue_server_request(
             ServerInterface.build_initiate_data_transfer_request(shellcode_binary_len))
 
-        # @todo move this to server_defs header and use only that.
-        chunk_size = server_defs.DEFAULT_MAX_SERVER_DATA_SIZE -\
-            server_defs.ServerTransferDataRequest.sizeof()
+        chunk_size = server_defs.MAX_TRANSFER_CHUNK_SIZE
 
         for chunk_offset in range(0, shellcode_binary_len, chunk_size):
             chunk_end = min(shellcode_binary_len, chunk_offset + chunk_size)
