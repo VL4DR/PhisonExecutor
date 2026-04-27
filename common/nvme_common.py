@@ -33,6 +33,7 @@ NVME_IDENTIFY_REST_FIELDS_SIZE = 0xFAC
 class NVMEIdentifyBuffer(ctypes.Structure):
     """NVMe Identify buffer structure.
     """
+    _pack_ = 1
     _fields_ = [
 		("vid", ctypes.c_uint16),
 		("ssvid", ctypes.c_uint16),
@@ -41,8 +42,6 @@ class NVMEIdentifyBuffer(ctypes.Structure):
 		("fr", ctypes.c_char * 20),
 		("rest", ctypes.c_ubyte * NVME_IDENTIFY_REST_FIELDS_SIZE)
 	]
-
-    _pack_ = 1
 
 
 # These defines are not NVMe specific,

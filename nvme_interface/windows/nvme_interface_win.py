@@ -1,23 +1,32 @@
 import time
 import ctypes
-import ctypes.wintypes as wintypes
+from ctypes import wintypes
 from ctypes import windll
-import common.nvme_common as nvme_common		
-import common.exceptions as exceptions		
+from common import nvme_common
+from common import exceptions
 import nvme_interface.windows.nvme_interface_win_defs as win_nvme
 
 class NVMEInterface:
     """Windows-based NVMe communication interface.
 	"""
     def __init__(self, device_path : str):
-        self._initialize_device(device_path)
+        self._device = NVMEInterface._open_device(device_path)
+        self._device_path = device_path
         self._method = win_nvme.IoctlMethod.IOCTL_METHOD_SCSI_PASSTHROUGH_DIRECT
 
 		# @todo some drives only work with StorageProtocol, see if we can support this somehow.
 		#self._method = win_nvme.IoctlMethod.IOCTL_METHOD_NVME_STORAGE_PROTOCOL
 
     @staticmethod
-    def _open_device(device_path : str):
+    def _open_device(device_path : str) -> wintypes.HANDLE:
+        """Open a device.
+
+        :param device_path: Path to device.
+        :type device_path: str
+        :raises exceptions.DeviceInaccessibleException: Device could not be opened.
+        :return: Handle to opened device.
+        :rtype: wintypes.HANDLE
+        """
         handle = wintypes.HANDLE(win_nvme.CreateFileA(device_path.encode('utf-8'),
 								win_nvme.GENERIC_READ | win_nvme.GENERIC_WRITE,
 								win_nvme.FILE_SHARE_READ | win_nvme.FILE_SHARE_WRITE,
@@ -31,12 +40,18 @@ class NVMEInterface:
         return handle
 
 
-    def _initialize_device(self, device_path : str):
-        self._device = NVMEInterface._open_device(device_path)
-        self._device_path = device_path
-
     @staticmethod
-    def _build_cdb(operation : win_nvme.CDBOperation, data_transfer_length : int):
+    def _build_cdb(operation : win_nvme.CDBOperation, data_transfer_length : int)\
+        -> win_nvme.SCSICDBData:
+        """Build a CDB structure to send over SCSI.
+
+        :param operation: CDB operation.
+        :type operation: win_nvme.CDBOperation
+        :param data_transfer_length: Data transfer length.
+        :type data_transfer_length: int
+        :return: The populated CDB
+        :rtype: win_nvme.SCSICDBData
+        """
         cdb = win_nvme.SCSICDBData()
 
         data_transfer_length_be = int.from_bytes(
@@ -50,16 +65,28 @@ class NVMEInterface:
         elif operation == win_nvme.CDBOperation.SCSI_WRITE_DATA:
             cdb.main_code = win_nvme.CDB_CODE_TRIGGER_WRITE
             cdb.sub_code = data_transfer_length_be
-        elif operation == win_nvme.CDBOperation.SCSI_READ_DATA:
+        else:
+            # win_nvme.CDBOperation.SCSI_READ_DATA
             cdb.main_code = win_nvme.CDB_CODE_READ
             cdb.sub_code = data_transfer_length_be
-        else:
-            raise ValueError("Unsupported CDBOperation!")
 
         return cdb
 
     @staticmethod
-    def _build_nvme_request(opcode : int, nsid : int, **kwargs : dict):
+    def _build_nvme_request(opcode : int, nsid : int, **kwargs : dict)\
+        -> tuple[win_nvme.NVMECmd, bytes, int]:
+        """Build an NVMe request structure.
+
+        :param opcode: NVMe command code.
+        :type opcode: int
+        :param nsid: Namespace ID.
+        :type nsid: int
+        :raises ValueError: data was provided, but data length was not.
+        :raises ValueError: data length is invalid.
+        :raises ValueError: Invalid combination of data and data length.
+        :return: The NVMe request structure along with the data to be sent with the data length.
+        :rtype: tuple[win_nvme.NVMECmd, bytes, int]
+        """
         nvme_cmd = win_nvme.NVMECmd()
         nvme_cmd.opcode = opcode
         nvme_cmd.nsid = nsid
@@ -96,7 +123,16 @@ class NVMEInterface:
         return nvme_cmd, actual_data, actual_data_len
 
 
-    def _execute_ioctl(self, ioctl_code : int, in_buffer : bytes):
+    def _execute_ioctl(self, ioctl_code : int, in_buffer : bytes) -> bytes:
+        """Execute an IOControl operation.
+
+        :param ioctl_code: IOControl operation code.
+        :type ioctl_code: int
+        :param in_buffer: Input buffer to include in the ioctl.
+        :type in_buffer: bytes
+        :return: The data returned from the ioctl.
+        :rtype: bytes
+        """
         DeviceIoControl = windll.kernel32.DeviceIoControl
         DeviceIoControl.argtypes = [
 				wintypes.HANDLE,
@@ -130,7 +166,21 @@ class NVMEInterface:
     def _send_scsi_passthrough(self,
                                direction : win_nvme.DataDirection,
                                in_buffer : bytes, transfer_size : int,
-                               cdb : win_nvme.CDBOperation) -> bytes:
+                               cdb : win_nvme.SCSICDBData) -> bytes:
+        """Issue Passthrough SCSI request.
+
+        :param direction: Operation direction.
+        :type direction: win_nvme.DataDirection
+        :param in_buffer: Data to send.
+        :type in_buffer: bytes
+        :param transfer_size: Transfer size.
+        :type transfer_size: int
+        :param cdb: CDB structure
+        :type cdb: win_nvme.SCSICDBData
+        :raises RuntimeError: Unexpected SCSI status code.
+        :return: Returned data from SCSI request.
+        :rtype: bytes
+        """
         cdb_bytes = bytes(cdb)
 
         scsi_passthrough = win_nvme.SCSIPassThroughDirect()
@@ -139,7 +189,7 @@ class NVMEInterface:
         scsi_passthrough.timeout = nvme_common.NVME_STANDARD_TIMEOUT_SECONDS
         scsi_passthrough.cdb = (len(cdb_bytes) * ctypes.c_ubyte).from_buffer_copy(bytes(cdb_bytes))
         scsi_passthrough.data_in = direction.value
-        scsi_passthrough.data_transfer_length = transfer_size 
+        scsi_passthrough.data_transfer_length = transfer_size
 
         data_buffer = (transfer_size * ctypes.c_ubyte)()
 
@@ -162,7 +212,18 @@ class NVMEInterface:
     def _send_nvme_over_scsi(self,
                              nvme_cmd : win_nvme.NVMECmd,
                              actual_data : bytes,
-                             actual_data_len : int):
+                             actual_data_len : int) -> tuple[int, bytes]:
+        """Send an NVMe request over SCSI.
+
+        :param nvme_cmd: The NVMe request.
+        :type nvme_cmd: win_nvme.NVMECmd
+        :param actual_data: data to include in the NVMe request.
+        :type actual_data: bytes
+        :param actual_data_len: Data length.
+        :type actual_data_len: int
+        :return: A tuple of the NVMe status code and the returned data bytes.
+        :rtype: tuple[int, bytes]
+        """
         direction = win_nvme.DataDirection.DIRECTION_OUT
         cdb_type = win_nvme.CDBOperation.SCSI_WRITE_DATA
 
@@ -181,12 +242,25 @@ class NVMEInterface:
                                     curr_cdb)
 
         curr_cdb = NVMEInterface._build_cdb(cdb_type, actual_data_len)
+        # @todo fix the error code here.
         return 0, self._send_scsi_passthrough(direction, actual_data, actual_data_len, curr_cdb)
 
     def _send_nvme_over_storage_protocol(self,
                                          nvme_cmd : win_nvme.NVMECmd,
                                          actual_data : bytes,
-                                         actual_data_len : int):
+                                         actual_data_len : int) -> tuple[int, bytes]:
+        """Send an NVMe request over Storage Protocol.
+
+        :param nvme_cmd: The NVMe request
+        :type nvme_cmd: win_nvme.NVMECmd
+        :param actual_data: data to include in the NVMe request.
+        :type actual_data: bytes
+        :param actual_data_len: Data length.
+        :type actual_data_len: int
+        :raises RuntimeError: Unexpected Storage Protocol status returned.
+        :return: A tuple of the NVMe status code and the returned data bytes.
+        :rtype: tuple[int, bytes]
+        """
         protocol_command = win_nvme.StorageProtocolCommand()
         protocol_command.version = win_nvme.STORAGE_PROTOCOL_STRUCTURE_VERSION
         protocol_command.length = ctypes.sizeof(protocol_command)
@@ -237,7 +311,7 @@ class NVMEInterface:
 		:type opcode: int
 		:param nsid: Namespace ID.
 		:type nsid: int
-		:raises ValueError: Invalid data or data length combination.
+		:raises ValueError: Invalid method provided.
 		:return: The ioctl return code and the NVMe buffer contents.
 		:rtype: tuple[int, bytes]
 		"""
@@ -247,4 +321,4 @@ class NVMEInterface:
             return self._send_nvme_over_storage_protocol(nvme_cmd, actual_data, actual_data_len)
         if self._method == win_nvme.IoctlMethod.IOCTL_METHOD_SCSI_PASSTHROUGH_DIRECT:
             return self._send_nvme_over_scsi(nvme_cmd, actual_data, actual_data_len)
-        raise RuntimeError("Invalid method!")
+        raise ValueError("Invalid method!")

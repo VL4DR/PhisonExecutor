@@ -10,6 +10,7 @@ class NVMEIoctl(Enum):
 class NVMEPassThrough(ctypes.Structure):
     """NVMe passthrough packet structure.
 	"""
+    _pack_ = 1
     _fields_ = [('opcode', ctypes.c_ubyte),
 				('flags', ctypes.c_ubyte),
 				('rsvd1', ctypes.c_uint16),
@@ -28,4 +29,3 @@ class NVMEPassThrough(ctypes.Structure):
 				('cdw15', ctypes.c_uint32),
 				('timeout_ms', ctypes.c_uint32),
 				('result', ctypes.c_uint32)]
-    _pack_ = 1
