@@ -6,19 +6,21 @@ ECFM322_DEFS = {
     'server_base_address' : 0x4016A000,
     'server_trampoline_binary_path' : 'resources/ECFM32.2/trampoline.bin',
     'server_trampoline_address' : 0x4011B84E,
-    'server_request_response_address' : 0x4016B000
+    'server_request_response_address' : 0x4016B000,
+    'use_security_receive' : True
 }
 
 
 EGFM132_DEFS = {
     'security_fw' : 'resources/EGFM13.2/security_fw.bin',
-	'modulus_path' : 'resources/EGFM13.2/modulus.bin',
-	'exp_path' : 'resources/EGFM13.2/exp.bin',
-	'server_binary_path' : 'resources/EGFM13.2/server.bin',
-    'server_base_address' : 0, # @todo fill correct value
+    'modulus_path' : 'resources/EGFM13.2/modulus.bin',
+    'exp_path' : 'resources/EGFM13.2/exp.bin',
+    'server_binary_path' : 'resources/EGFM13.2/server.bin',
+    'server_base_address' : 0x4016A000,
     'server_trampoline_binary_path' : 'resources/EGFM13.2/trampoline.bin',
-    'server_trampoline_address' : 0, # @todo fill correct value
-    'server_request_response_address' : 0 # @todo fill correct value
+    'server_trampoline_address' : 0x4011B864,
+    'server_request_response_address' : 0x4016B000,
+    'use_security_receive' : True
 }
 
 
@@ -30,7 +32,8 @@ EIFK512_DEFS = {
     'server_base_address' : 0x4016A000,
     'server_trampoline_binary_path' : 'resources/EIFK51.2/trampoline.bin',
     'server_trampoline_address' : 0x40151D38,
-    'server_request_response_address' : 0x4016B000
+    'server_request_response_address' : 0x4016B000,
+    'use_security_receive' : False
 }
 
 
@@ -42,7 +45,8 @@ EIFM800_DEFS = {
     'server_base_address' : 0x4016A000,
     'server_trampoline_binary_path' : 'resources/EIFM80.0/trampoline.bin',
     'server_trampoline_address' : 0x40153230,
-    'server_request_response_address' : 0x4016B000
+    'server_request_response_address' : 0x4016B000,
+    'use_security_receive' : False
 }
 
 

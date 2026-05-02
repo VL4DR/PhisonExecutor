@@ -4,7 +4,6 @@ import ctypes
 from functools import reduce
 from Crypto.Cipher import AES
 from Crypto.Util.number import bytes_to_long, long_to_bytes
-from common import nvme_common
 from phison_executor import phison_executor_defs
 from phison import phison_defs
 from phison.phison_layer import PhisonLayer
@@ -19,11 +18,11 @@ class PhisonExecutor:
     def __init__(self, device_path : str):
         self._phison = PhisonLayer(device_path)
         fw_version = self._get_fw_version()
+        logger.info(f"Controller FW version {fw_version}")
         if fw_version not in phison_executor_defs.PHISON_EXECUTOR_DEFS:
             raise phison_executor_defs.FirmwareUnsupportedException(
                 f"FW version {fw_version} is currently unsupported!")
 
-        logger.info(f"Controller FW version {fw_version}")
         self._fw_defs = phison_executor_defs.PHISON_EXECUTOR_DEFS[fw_version]
 
         with open(self._fw_defs['modulus_path'], 'rb') as f:
@@ -94,6 +93,25 @@ class PhisonExecutor:
             lst.append(some_bytes[i : i + phison_defs.PHISON_SECURITY_AES_KEY_SIZE])
 
         return lst
+    
+
+    def _get_fw_version_via_log_page(self, use_security_receive : bool) -> bytes:
+        """Get the Phison-based FW controller using an internal log page.
+
+        :param use_security_receive: Use security receive to fetch the log page data.
+        :type some_bytes: bool
+        :return: The byte representation of the FW version string.
+        :rtype: bytes
+        """
+        system_info_size = ctypes.sizeof(phison_defs.PhisonSystemInfo)
+        system_info_bytes = self._phison.phison_get_vsc_log_page(
+            phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_SYSTEM_INFO,
+            0,
+            system_info_size, 
+            use_security_receive)
+        
+        system_info = phison_defs.PhisonSystemInfo.from_buffer_copy(system_info_bytes)
+        return bytes(system_info.fw_ver)
 
 
     def _get_fw_version(self) -> str:
@@ -102,11 +120,13 @@ class PhisonExecutor:
         :return: The FW version string.
         :rtype: str
         """
-        system_info_size = ctypes.sizeof(phison_defs.PhisonSystemInfo)
-        system_info_bytes = self._phison.phison_get_vsc_log_page(
-            phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_SYSTEM_INFO, 0, system_info_size)
-        system_info = phison_defs.PhisonSystemInfo.from_buffer_copy(system_info_bytes)
-        return bytes(system_info.fw_ver).decode('ascii')
+        # First, try without Security Receive.
+        fw_ver_bytes = self._get_fw_version_via_log_page(False)
+        if fw_ver_bytes[0] == 0:
+            # No version available, retry with Security Receive.
+            fw_ver_bytes = self._get_fw_version_via_log_page(True)
+        
+        return fw_ver_bytes.decode('ascii')
 
 
     def _install_server(self):
@@ -255,7 +275,10 @@ class PhisonExecutor:
 
         # Trigger server logic
         self._phison.phison_get_vsc_log_page(
-            phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_C6, 0, 0x1000)
+            phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_C6,
+            0,
+            0x1000,
+            self._fw_defs['use_security_receive'])
 
         # Read Response (might be more than what's needed, maximum size is read for simplicity)
         response = self._phison_read_large(
@@ -295,7 +318,7 @@ class PhisonExecutor:
         :raises ValueError: Empty data.
         """
         if len(data) == 0:
-            raise ValueError(f"Cannot have empty data!")
+            raise ValueError("Cannot have empty data!")
         return self._issue_server_request(ServerInterface.build_write_memory_request(address, data))
 
 

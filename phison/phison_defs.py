@@ -33,6 +33,15 @@ class PhisonVSCSubCmd(Enum):
     PHISON_VSC_SECURITY_PHASE5 = 0xC6
     PHISON_VSC_EXECUTE_STANDARD = 0xFF
 
+class PhisonSecuritySendReceiveMajorCommand(Enum):
+    """Phison NVMe Security Send/Receive major commands
+    """
+    PHISON_SECURITY_MAJOR_COMMAND_HANDLE_VSC = 0xFE
+
+class PhisonSecuritySendReceiveMinorCommand(Enum):
+    """Phison NVMe Security Send/Receive minor commands
+    """
+    PHISON_SECURITY_MINOR_COMMAND_RECEIVE_VSC_DATA = 0xC2
 
 class PhisonVSCLogPageId(Enum):
     """Phison VSC Log Page ID

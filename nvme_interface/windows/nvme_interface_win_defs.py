@@ -63,7 +63,8 @@ class NVMECmd(ctypes.Structure):
 class StorageProtocolCommand(ctypes.Structure):
     """Storage Protocol command structure.
 	"""
-    _pack_ = 1
+    # @todo check packing.
+    #_pack_ = 1
     _fields_ = [('version', wintypes.DWORD),
 				('length', wintypes.DWORD),
 				('protocol_type', wintypes.DWORD),
@@ -89,7 +90,8 @@ class StorageProtocolCommand(ctypes.Structure):
 class SCSIPassThroughDirect(ctypes.Structure):
     """Passthrough SCSI direct mode frame structure.
     """
-    _pack_ = 1
+    # @todo check packing.
+    #_pack_ = 1
     _fields_ = [
 		('length', ctypes.c_uint16),
 		('scsi_status', ctypes.c_uint8),

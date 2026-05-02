@@ -95,6 +95,31 @@ class PhisonLayer:
 
         return self._nvme.nvme_send_command(opcode.value, nsid, **kwargs)
 
+    def _do_security_receive(self,
+                             major : phison.PhisonSecuritySendReceiveMajorCommand,
+                             minor : phison.PhisonSecuritySendReceiveMinorCommand,
+                             size : int) -> bytes:
+        """Issue an NVM Security Receive command based on Phison's command codes.
+        
+        :param major: The major command code.
+        :type major: phison.PhisonSecuritySendReceiveMajorCommand
+        :param minor: The minor command code.
+        :type minor: phison.PhisonSecuritySendReceiveMinorCommand
+        :param size: The receive size in bytes.
+        :type size: int
+        :return: Security Receive data.
+        :rtype: bytes
+        """
+        assert size > 0
+
+        security_receive_args = {'cdw10' : major.value << 24 | minor.value << 8,
+                                 'cdw11' : size,
+                                 'data_len' : size}
+
+        return self._nvme.nvme_send_command(nvme_common.NVMEOpcode.NVME_SECURITY_RECEIVE.value,
+                                            0,
+                                            **security_receive_args)
+
 
     @phison_vsc
     def _phison_fw_download_chunk(self, offset : int, chunk_data : bytes):
@@ -118,7 +143,7 @@ class PhisonLayer:
                             'cdw14' : offset >> 2,
                             'data' : chunk_data,
                             'data_len' : chunk_size}
-        
+
         ioctl_ret, _ = self._send_phison_vsc(
                 phison.PhisonVSCCmd.PHISON_SEND, 0, **download_args)
         if ioctl_ret != 0:
@@ -138,10 +163,14 @@ class PhisonLayer:
         if ret_code != 0:
             raise phison.PhisonVSCFailedException(
                 f"Unlocking VSC failed. Error code {hex(ret_code)}")
-        
-    
+
+
     @phison_vsc
-    def phison_get_vsc_log_page(self, vsc_log_page_id : phison.PhisonVSCLogPageId, offset : int, size : int):
+    def phison_get_vsc_log_page(self,
+                                vsc_log_page_id : phison.PhisonVSCLogPageId,
+                                offset : int,
+                                size : int,
+                                use_security_receive : bool = False):
         """Get Phison VSC log page data.
 
         :param vsc_log_page_id: The log page ID to get data from.
@@ -158,7 +187,7 @@ class PhisonLayer:
         """
         if size % 4 != 0 or size <= 0 or size > nvme_common.NVME_MAX_TRANSFER_SIZE:
             raise ValueError(f"Size {hex(size)} is invalid!")
-        
+
         if offset < 0 or offset >= 2 ** 23:
             raise ValueError(f"Offset {hex(offset)} is invalid!")
 
@@ -168,12 +197,24 @@ class PhisonLayer:
                               'cdw13' : vsc_log_page_id.value,
                               'cdw14' : offset << 9,
                               'data_len' : size}
-        
+
         ioctl_ret, log_data = self._send_phison_vsc(
             phison.PhisonVSCCmd.PHISON_RECEIVE, 0, **read_log_page_args)
         if ioctl_ret != 0:
-                raise phison.PhisonVSCFailedException(
+            raise phison.PhisonVSCFailedException(
                     f"Log page could not be read.\
+                    Error code {hex(ioctl_ret)}")
+
+        if use_security_receive:
+            ioctl_ret, log_data = self._do_security_receive(
+                phison.PhisonSecuritySendReceiveMajorCommand.\
+                    PHISON_SECURITY_MAJOR_COMMAND_HANDLE_VSC,
+                phison.PhisonSecuritySendReceiveMinorCommand.\
+                    PHISON_SECURITY_MINOR_COMMAND_RECEIVE_VSC_DATA,
+                size)
+            if ioctl_ret != 0:
+                raise phison.PhisonVSCFailedException(
+                    f"Security Receive of log page failed!\
                     Error code {hex(ioctl_ret)}")
 
         return log_data
@@ -392,7 +433,7 @@ class PhisonLayer:
 
 
     @phison_vsc
-    def phison_memory_read(self, address : int, size : int) -> bytes:
+    def phison_memory_read(self, address : int, size : int, core : int = 0) -> bytes:
         """Read from arbitrary controller memory.
 
 		:param address: The address to read from.
@@ -412,6 +453,7 @@ class PhisonLayer:
                 "Read size cannot exceed the max r/w size, nor can it be less than 4!")
 
         read_args = {'cdw10' : size >> 2,
+                        'cdw11' : core,
 						'cdw12' : phison.PhisonVSCSubCmd.PHISON_VSC_MEM_READ.value,
 						'cdw13' : address,
 						'cdw14' : size,

@@ -15,7 +15,7 @@ class NVMEInterface:
         self._method = win_nvme.IoctlMethod.IOCTL_METHOD_SCSI_PASSTHROUGH_DIRECT
 
 		# @todo some drives only work with StorageProtocol, see if we can support this somehow.
-		#self._method = win_nvme.IoctlMethod.IOCTL_METHOD_NVME_STORAGE_PROTOCOL
+        #self._method = win_nvme.IoctlMethod.IOCTL_METHOD_NVME_STORAGE_PROTOCOL
 
     @staticmethod
     def _open_device(device_path : str) -> wintypes.HANDLE:
@@ -148,7 +148,6 @@ class NVMEInterface:
         bytes_returned = wintypes.DWORD(0)
 
         ioctl_data_buffer = (len(in_buffer) * ctypes.c_ubyte).from_buffer_copy(in_buffer)
-
         ret = DeviceIoControl(self._device,
 					ioctl_code,
 					ioctl_data_buffer,
