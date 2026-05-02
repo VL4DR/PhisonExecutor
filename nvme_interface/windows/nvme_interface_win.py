@@ -164,7 +164,8 @@ class NVMEInterface:
 
     def _send_scsi_passthrough(self,
                                direction : win_nvme.DataDirection,
-                               in_buffer : bytes, transfer_size : int,
+                               in_buffer : bytes,
+                               transfer_size : int,
                                cdb : win_nvme.SCSICDBData) -> bytes:
         """Issue Passthrough SCSI request.
 
@@ -237,7 +238,8 @@ class NVMEInterface:
         curr_cdb = NVMEInterface._build_cdb(
             win_nvme.CDBOperation.SCSI_SEND_SQ, ctypes.sizeof(nvme_cmd))
         self._send_scsi_passthrough(win_nvme.DataDirection.DIRECTION_OUT,
-                                    bytes(nvme_cmd), ctypes.sizeof(nvme_cmd),
+                                    bytes(nvme_cmd),
+                                    ctypes.sizeof(nvme_cmd),
                                     curr_cdb)
 
         curr_cdb = NVMEInterface._build_cdb(cdb_type, actual_data_len)

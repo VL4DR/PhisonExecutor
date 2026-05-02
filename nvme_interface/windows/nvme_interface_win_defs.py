@@ -90,8 +90,6 @@ class StorageProtocolCommand(ctypes.Structure):
 class SCSIPassThroughDirect(ctypes.Structure):
     """Passthrough SCSI direct mode frame structure.
     """
-    # @todo check packing.
-    #_pack_ = 1
     _fields_ = [
 		('length', ctypes.c_uint16),
 		('scsi_status', ctypes.c_uint8),

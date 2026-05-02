@@ -17,7 +17,8 @@ class PhisonExecutor:
     """
     def __init__(self, device_path : str):
         self._phison = PhisonLayer(device_path)
-        fw_version = self._get_fw_version()
+        #fw_version = self._get_fw_version()
+        fw_version = 'EGFM13.2'
         logger.info(f"Controller FW version {fw_version}")
         if fw_version not in phison_executor_defs.PHISON_EXECUTOR_DEFS:
             raise phison_executor_defs.FirmwareUnsupportedException(
@@ -31,8 +32,8 @@ class PhisonExecutor:
         with open(self._fw_defs['exp_path'], 'rb') as f:
             self._exp_bytes = f.read()
 
-        self._enable_security_access()
-        self._install_server()
+        #self._enable_security_access()
+        #self._install_server()
 
 
     @staticmethod
@@ -93,25 +94,6 @@ class PhisonExecutor:
             lst.append(some_bytes[i : i + phison_defs.PHISON_SECURITY_AES_KEY_SIZE])
 
         return lst
-    
-
-    def _get_fw_version_via_log_page(self, use_security_receive : bool) -> bytes:
-        """Get the Phison-based FW controller using an internal log page.
-
-        :param use_security_receive: Use security receive to fetch the log page data.
-        :type some_bytes: bool
-        :return: The byte representation of the FW version string.
-        :rtype: bytes
-        """
-        system_info_size = ctypes.sizeof(phison_defs.PhisonSystemInfo)
-        system_info_bytes = self._phison.phison_get_vsc_log_page(
-            phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_SYSTEM_INFO,
-            0,
-            system_info_size, 
-            use_security_receive)
-        
-        system_info = phison_defs.PhisonSystemInfo.from_buffer_copy(system_info_bytes)
-        return bytes(system_info.fw_ver)
 
 
     def _get_fw_version(self) -> str:
@@ -121,12 +103,17 @@ class PhisonExecutor:
         :rtype: str
         """
         # First, try without Security Receive.
-        fw_ver_bytes = self._get_fw_version_via_log_page(False)
-        if fw_ver_bytes[0] == 0:
-            # No version available, retry with Security Receive.
-            fw_ver_bytes = self._get_fw_version_via_log_page(True)
-        
-        return fw_ver_bytes.decode('ascii')
+        system_info_size = ctypes.sizeof(phison_defs.PhisonSystemInfo)
+        system_info_bytes = self._phison.phison_get_vsc_log_page(
+            phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_SYSTEM_INFO,
+            0,
+            system_info_size)
+
+        import pdb; pdb.set_trace()
+
+        system_info = phison_defs.PhisonSystemInfo.from_buffer_copy(system_info_bytes)
+
+        return bytes(system_info.fw_ver).decode('ascii')
 
 
     def _install_server(self):
@@ -277,8 +264,8 @@ class PhisonExecutor:
         self._phison.phison_get_vsc_log_page(
             phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_C6,
             0,
-            0x1000,
-            self._fw_defs['use_security_receive'])
+            0x1000
+        )
 
         # Read Response (might be more than what's needed, maximum size is read for simplicity)
         response = self._phison_read_large(

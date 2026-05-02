@@ -42,13 +42,29 @@ class PhisonLayer:
 
         return ((crc & 0xFF) << 8) | ((crc >> 8) & 0xFF)
 
+    @staticmethod
+    def _pad_zero_bytes(buf : bytes, alignment : int) -> bytes:
+        """Zero-pad a buffer.
+
+		:param buf: The buffer to pad.
+		:type buf: bytes
+        :param alignment: The padding alignment.
+		:type alignment: int
+		:return: The padded buffer.
+		:rtype: bytes
+		"""
+        assert alignment > 0
+        buf_len = len(buf)
+        padded_buf_len = buf_len + (alignment - buf_len % alignment) % alignment
+        return buf.ljust(padded_buf_len, b'\x00')
+
 
     @staticmethod
-    def _calculate_request_crc(crc_data : phison.PhisonCRCData) -> int:
+    def _calculate_request_crc(crc_data : phison.PhisonNVMCommandTemplate) -> int:
         """Calculate the Phison VSC request CRC.
 
 		:param crc_data: The data to compute CRC for.
-		:type crc_data: phison.PhisonCRCData
+		:type crc_data: phison.PhisonNVMCommandTemplate
 		:return: The CRC result.
 		:rtype: int
 		"""
@@ -70,7 +86,7 @@ class PhisonLayer:
 		:return: NVMe buffer data.
 		:rtype: bytes
 		"""
-        crc_data = phison.PhisonCRCData()
+        crc_data = phison.PhisonNVMCommandTemplate()
         crc_data.opcode = opcode.value
 
         if 'cdw10' in kwargs:
@@ -112,13 +128,56 @@ class PhisonLayer:
         """
         assert size > 0
 
-        security_receive_args = {'cdw10' : major.value << 24 | minor.value << 8,
-                                 'cdw11' : size,
-                                 'data_len' : size}
+        security_receive_args = {
+            'cdw10' : major.value << 24 | minor.value << 8,
+            'cdw11' : size,
+            'data_len' : size
+        }
 
-        return self._nvme.nvme_send_command(nvme_common.NVMEOpcode.NVME_SECURITY_RECEIVE.value,
-                                            0,
-                                            **security_receive_args)
+        ioctl_ret, data = self._nvme.nvme_send_command(
+            nvme_common.NVMEOpcode.NVME_SECURITY_RECEIVE.value,
+            0,
+            **security_receive_args
+        )
+        if ioctl_ret != 0:
+            raise phison.PhisonVSCFailedException("Security Receive failed!")
+
+        return data
+
+    def _do_security_send(self,
+                             major : phison.PhisonSecuritySendReceiveMajorCommand,
+                             minor : phison.PhisonSecuritySendReceiveMinorCommand,
+                             data : bytes):
+        """Issue an NVM Security Send command based on Phison's command codes.
+        
+        :param major: The major command code.
+        :type major: phison.PhisonSecuritySendReceiveMajorCommand
+        :param minor: The minor command code.
+        :type minor: phison.PhisonSecuritySendReceiveMinorCommand
+        :param data: Data to send.
+        :type data: int
+        """
+        data_len = len(data)
+        assert data_len > 0
+
+        actual_data = PhisonLayer._pad_zero_bytes(data, phison.PHISON_RW_CHUNK_SIZE)
+        security_send_args = {
+            'cdw10' : major.value << 24 | minor.value << 8,
+            'cdw11' : len(actual_data),
+            'data' : actual_data,
+            'data_len' : len(actual_data)
+        }
+
+        ioctl_ret, _ = self._nvme.nvme_send_command(
+            nvme_common.NVMEOpcode.NVME_SECURITY_SEND.value,
+            0,
+            **security_send_args
+        )
+
+        import pdb; pdb.set_trace()
+
+        if ioctl_ret != 0:
+            raise phison.PhisonVSCFailedException("Security Send failed!")
 
 
     @phison_vsc
@@ -137,12 +196,14 @@ class PhisonLayer:
         chunk_size = len(chunk_data)
         assert chunk_size >= 4 and chunk_size <= nvme_common.NVME_MAX_TRANSFER_SIZE
 
-        download_args = {'cdw10' : chunk_size >> 2,
-                         'cdw12' : (nvme_common.NVMEOpcode.NVME_FW_DOWNLOAD.value << 8) |\
-                            phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
-                            'cdw14' : offset >> 2,
-                            'data' : chunk_data,
-                            'data_len' : chunk_size}
+        download_args = {
+            'cdw10' : chunk_size >> 2,
+            'cdw12' : (nvme_common.NVMEOpcode.NVME_FW_DOWNLOAD.value << 8) |\
+                phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
+            'cdw14' : offset >> 2,
+            'data' : chunk_data,
+            'data_len' : chunk_size
+        }
 
         ioctl_ret, _ = self._send_phison_vsc(
                 phison.PhisonVSCCmd.PHISON_SEND, 0, **download_args)
@@ -169,8 +230,7 @@ class PhisonLayer:
     def phison_get_vsc_log_page(self,
                                 vsc_log_page_id : phison.PhisonVSCLogPageId,
                                 offset : int,
-                                size : int,
-                                use_security_receive : bool = False):
+                                size : int):
         """Get Phison VSC log page data.
 
         :param vsc_log_page_id: The log page ID to get data from.
@@ -191,31 +251,35 @@ class PhisonLayer:
         if offset < 0 or offset >= 2 ** 23:
             raise ValueError(f"Offset {hex(offset)} is invalid!")
 
-        read_log_page_args = {'cdw10' : size >> 2,
-                              'cdw12' : (nvme_common.NVMEOpcode.NVME_GET_LOG_PAGE.value << 8) |\
-                              phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
-                              'cdw13' : vsc_log_page_id.value,
-                              'cdw14' : offset << 9,
-                              'data_len' : size}
+        nvm_security_command_args = {
+            'opcode' : phison.PhisonVSCCmd.PHISON_RECEIVE.value,
+            'cdw10' : size >> 2,
+            'cdw11' : 0,
+            'cdw12' : (nvme_common.NVMEOpcode.NVME_GET_LOG_PAGE.value << 8) |\
+                phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
+            'cdw13' : vsc_log_page_id.value,
+            'cdw14' : offset << 9,
+            'cdw15' : 0
+        }
 
-        ioctl_ret, log_data = self._send_phison_vsc(
-            phison.PhisonVSCCmd.PHISON_RECEIVE, 0, **read_log_page_args)
-        if ioctl_ret != 0:
-            raise phison.PhisonVSCFailedException(
-                    f"Log page could not be read.\
-                    Error code {hex(ioctl_ret)}")
+        nvme_cmd = phison.PhisonNVMCommandTemplate(**nvm_security_command_args)
+        nvm_security_crc = PhisonLayer._calculate_request_crc(nvme_cmd)
+        nvme_cmd.cdw15 = nvm_security_crc << 16
 
-        if use_security_receive:
-            ioctl_ret, log_data = self._do_security_receive(
-                phison.PhisonSecuritySendReceiveMajorCommand.\
-                    PHISON_SECURITY_MAJOR_COMMAND_HANDLE_VSC,
-                phison.PhisonSecuritySendReceiveMinorCommand.\
-                    PHISON_SECURITY_MINOR_COMMAND_RECEIVE_VSC_DATA,
-                size)
-            if ioctl_ret != 0:
-                raise phison.PhisonVSCFailedException(
-                    f"Security Receive of log page failed!\
-                    Error code {hex(ioctl_ret)}")
+        self._do_security_send(
+            phison.PhisonSecuritySendReceiveMajorCommand.\
+                PHISON_SECURITY_MAJOR_COMMAND_HANDLE_VSC,
+            phison.PhisonSecuritySendReceiveMinorCommand.\
+                PHISON_SECURITY_MINOR_COMMAND_SEND_VSC_DATA,
+            bytes(nvme_cmd)
+        )
+
+        log_data = self._do_security_receive(
+            phison.PhisonSecuritySendReceiveMajorCommand.\
+                PHISON_SECURITY_MAJOR_COMMAND_HANDLE_VSC,
+            phison.PhisonSecuritySendReceiveMinorCommand.\
+                PHISON_SECURITY_MINOR_COMMAND_RECEIVE_VSC_DATA,
+            size)
 
         return log_data
 
@@ -412,19 +476,24 @@ class PhisonLayer:
         :raises phison.PhisonVSCFailedException: Error in VSC processing.
 
         .. note:: The controller must have entered Security Access.
-        .. note:: size of data must be >= 4 and <= phison.PHISON_RW_CHUNK_SIZE.
+        .. note:: size of data must be > 0 and <= phison.PHISON_RW_CHUNK_SIZE.
+        .. warning:: At least phison.PHISON_RW_CHUNK_SIZE must be accessible starting from
+            the address.
 		"""
         data_len = len(data)
-        if data_len > phison.PHISON_RW_CHUNK_SIZE or data_len < 4 :
+        if data_len > phison.PHISON_RW_CHUNK_SIZE or data_len <= 0 :
             raise ValueError(
                 "Size of write data cannot exceeded the max r/w size, not can it be less than 4!")
 
-        write_args = {'cdw10' : len(data) >> 2,
+        original_data = self.phison_memory_read(address, phison.PHISON_FW_NAME_SIZE)
+        write_data = b''.join([data, original_data[data_len : ]])
+
+        write_args = {'cdw10' : len(write_data) >> 2,
 						'cdw12' : phison.PhisonVSCSubCmd.PHISON_VSC_MEM_WRITE.value,
 						'cdw13' : address,
-						'cdw14' : len(data),
-						'data' : data,
-						'data_len' : len(data)}
+						'cdw14' : len(write_data),
+						'data' : write_data,
+						'data_len' : len(write_data)}
 
         ret_code, _ = self._send_phison_vsc(phison.PhisonVSCCmd.PHISON_SEND, 0, **write_args)
         if ret_code != 0:
@@ -433,7 +502,7 @@ class PhisonLayer:
 
 
     @phison_vsc
-    def phison_memory_read(self, address : int, size : int, core : int = 0) -> bytes:
+    def phison_memory_read(self, address : int, size : int) -> bytes:
         """Read from arbitrary controller memory.
 
 		:param address: The address to read from.
@@ -446,22 +515,23 @@ class PhisonLayer:
         :rtype: bytes
 
         .. note:: The controller must have entered Security Access.
-        .. note:: read size must be >= 4 and <= phison.PHISON_RW_CHUNK_SIZE.
+        .. note:: Read size must be > 0 and <= phison.PHISON_RW_CHUNK_SIZE.
+        .. warning:: At least phison.PHISON_RW_CHUNK_SIZE must be accessible starting from
+            the address.
 		"""
-        if size > phison.PHISON_RW_CHUNK_SIZE or size < 4:
+        if size > phison.PHISON_RW_CHUNK_SIZE or size <= 0:
             raise ValueError(
                 "Read size cannot exceed the max r/w size, nor can it be less than 4!")
 
-        read_args = {'cdw10' : size >> 2,
-                        'cdw11' : core,
+        read_args = {'cdw10' : phison.PHISON_RW_CHUNK_SIZE >> 2,
 						'cdw12' : phison.PhisonVSCSubCmd.PHISON_VSC_MEM_READ.value,
 						'cdw13' : address,
-						'cdw14' : size,
-						'data_len' : size}
+						'cdw14' : phison.PHISON_RW_CHUNK_SIZE,
+						'data_len' : phison.PHISON_RW_CHUNK_SIZE}
 
         ret_code, ret_buf = self._send_phison_vsc(
             phison.PhisonVSCCmd.PHISON_RECEIVE, 0, **read_args)
         if ret_code != 0:
             raise phison.PhisonVSCFailedException(f"Memory read failed. Error code {hex(ret_code)}")
 
-        return ret_buf
+        return ret_buf[ : size]

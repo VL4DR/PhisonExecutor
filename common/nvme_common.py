@@ -8,6 +8,7 @@ class NVMEOpcode(Enum):
     NVME_IDENTIFY = 0x06
     NVME_FW_COMMIT = 0x10
     NVME_FW_DOWNLOAD = 0x11
+    NVME_SECURITY_SEND = 0x81
     NVME_SECURITY_RECEIVE = 0x82
 
 class NVMECommitAction(Enum):

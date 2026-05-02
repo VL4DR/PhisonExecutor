@@ -1,8 +1,8 @@
 import ctypes
 from enum import Enum
 
-class PhisonCRCData(ctypes.Structure):
-    """The Phison command data that CRC is done on.
+class PhisonNVMCommandTemplate(ctypes.Structure):
+    """The Phison NVMe command data.
 	"""
     _pack_ = 1
     _fields_ = [('opcode', ctypes.c_ubyte),
@@ -41,6 +41,7 @@ class PhisonSecuritySendReceiveMajorCommand(Enum):
 class PhisonSecuritySendReceiveMinorCommand(Enum):
     """Phison NVMe Security Send/Receive minor commands
     """
+    PHISON_SECURITY_MINOR_COMMAND_SEND_VSC_DATA = 0xC0
     PHISON_SECURITY_MINOR_COMMAND_RECEIVE_VSC_DATA = 0xC2
 
 class PhisonVSCLogPageId(Enum):

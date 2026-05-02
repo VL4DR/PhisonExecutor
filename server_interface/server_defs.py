@@ -56,7 +56,7 @@ class ServerResponseHeader(ctypes.Structure):
                 ('length', ctypes.c_uint32),
                 ('status', ctypes.c_uint32),
                 ('integrity', ctypes.c_uint32)]
-    
+
 
 class ServerReadRequest(ctypes.Structure):
     """Server Read Memory request structure.
@@ -64,7 +64,7 @@ class ServerReadRequest(ctypes.Structure):
     _pack_ = 1
     _fields_ = [('address', ctypes.c_uint64),
                 ('size', ctypes.c_uint32)]
-    
+
 
 class ServerWriteRequest(ctypes.Structure):
     """Server Write Memory request structure.
@@ -82,7 +82,7 @@ class ServerCallRequest(ctypes.Structure):
                 ('arg2', ctypes.c_uint64),
                 ('arg3', ctypes.c_uint64),
                 ('arg4', ctypes.c_uint64)]
-    
+
 
 class ServerTransferInitiateRequest(ctypes.Structure):
     """Server Transfer Initiate request structure.
@@ -96,7 +96,7 @@ class ServerTransferDataRequest(ctypes.Structure):
     """
     _pack_ = 1
     _fields_ = [('offset', ctypes.c_uint32)]
-    
+
 
 # The maximum size possible for a single server response frame.
 MAX_SERVER_RESPONSE_SIZE = ctypes.sizeof(ServerResponseHeader) + DEFAULT_MAX_SERVER_DATA_SIZE

@@ -22,7 +22,7 @@ def main(args):
     IPython.embed(header="The Phison shell object can be accessed through 'pe'")
     #except Exception as e:
     #   logging.critical(f"Error occured while creating PhisonExecutor: {str(e)}")
-    #    return 1
+    #   return 1
 
 
 if __name__ == "__main__":
