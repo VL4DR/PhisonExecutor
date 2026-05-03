@@ -103,3 +103,9 @@ MAX_SERVER_RESPONSE_SIZE = ctypes.sizeof(ServerResponseHeader) + DEFAULT_MAX_SER
 
 # The maximum size of the data chunk that may be transferred at a time.
 MAX_TRANSFER_CHUNK_SIZE = DEFAULT_MAX_SERVER_DATA_SIZE - ctypes.sizeof(ServerTransferDataRequest)
+
+# The maximum chunk size that may be received in a single Read command.
+MAX_READ_CHUNK_SIZE = DEFAULT_MAX_SERVER_DATA_SIZE
+
+# The maximum chunk size that may be sent in a single Write command.
+MAX_WRITE_CHUNK_SIZE = DEFAULT_MAX_SERVER_DATA_SIZE - ctypes.sizeof(ServerWriteRequest)

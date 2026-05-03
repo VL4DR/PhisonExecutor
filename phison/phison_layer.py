@@ -1,5 +1,6 @@
 import platform
 import ctypes
+import common
 from common import nvme_common
 import phison.phison_defs as phison
 
@@ -392,10 +393,10 @@ class PhisonLayer:
         try:
             self.phison_fw_download(security_fw_file_path, 0x1000)
             self.phison_fw_commit(0, nvme_common.NVMECommitAction.NVME_FW_COMMIT_CA_REPLACE)
-        except nvme_common.NVMEFwCommitException as exc:
+        except common.exceptions.NVMEFwCommitException as exc:
             raise phison.Phase2RecoverableException(
                 "Either security FW image is invalid or a reset attempt should be made") from exc
-        except (nvme_common.NVMEFwDownloadException, Exception) as exc:
+        except (common.exceptions.NVMEFwDownloadException, Exception) as exc:
             raise phison.Phase2UnexpectedException(
                 "Unexpected exception at 2nd phase, cannot continue") from exc
 
@@ -505,6 +506,7 @@ class PhisonLayer:
 						'data' : write_data,
 						'data_len' : len(write_data)}
 
+        self.unlock_vsc()
         ret_code, _ = self._send_phison_vsc(phison.PhisonVSCCmd.PHISON_SEND, 0, **write_args)
         if ret_code != 0:
             raise phison.PhisonVSCFailedException(

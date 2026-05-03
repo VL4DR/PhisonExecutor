@@ -289,7 +289,17 @@ class PhisonExecutor:
         """
         if size <= 0:
             raise ValueError(f"Cannot have non-positive read size {size}")
-        return self._issue_server_request(ServerInterface.build_read_memory_request(address, size))
+
+        chunk_size = server_defs.MAX_READ_CHUNK_SIZE
+        end_address = address + size
+        read_data = b''
+
+        for curr_address in range(address, address + size, chunk_size):
+            curr_chunk_size = min(chunk_size, end_address - curr_address)
+            read_data += self._issue_server_request(
+                ServerInterface.build_read_memory_request(curr_address, curr_chunk_size))
+
+        return read_data
 
 
     def memory_write(self, address : int, data : bytes):
@@ -303,7 +313,16 @@ class PhisonExecutor:
         """
         if len(data) == 0:
             raise ValueError("Cannot have empty data!")
-        return self._issue_server_request(ServerInterface.build_write_memory_request(address, data))
+
+        chunk_size = server_defs.MAX_WRITE_CHUNK_SIZE
+        data_len = len(data)
+        end_address = address + data_len
+
+        for curr_offset in range(0, data_len, chunk_size):
+            curr_chunk_size = min(chunk_size, end_address - curr_offset)
+            write_data = data[curr_offset : ][ : curr_chunk_size]
+            self._issue_server_request(
+                ServerInterface.build_write_memory_request(address + curr_offset, write_data))
 
 
     def call_function(self,
