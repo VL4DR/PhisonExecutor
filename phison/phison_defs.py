@@ -81,6 +81,9 @@ PHISON_NVME_BUFFER_SIZE = 0x20000
 # Maximum size that can be read/write at a time.
 PHISON_RW_CHUNK_SIZE = 0x100
 
+class UnsupportedOSException(Exception):
+    """The OS is unsupported.
+	"""
 
 class Phase2RecoverableException(Exception):
     """Security Access phase 2 expected and recoverable exception.

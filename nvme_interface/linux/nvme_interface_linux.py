@@ -2,9 +2,10 @@ import os
 import ctypes
 import fcntl
 from common import nvme_common
+from nvme_interface.base.nvme_interface import NVMEInterface
 import nvme_interface.linux.nvme_interface_linux_defs as nvme_linux
 
-class NVMEInterface:
+class NVMEInterfaceLinux(NVMEInterface):
     """Linux NVMe command interface.
 	"""
     def __init__(self, device_path : str):

@@ -1,21 +1,22 @@
-import time
 import ctypes
 from ctypes import wintypes
 from ctypes import windll
 from common import nvme_common
 from common import exceptions
+from nvme_interface.base.nvme_interface import NVMEInterface
 import nvme_interface.windows.nvme_interface_win_defs as win_nvme
 
-class NVMEInterface:
+class NVMEInterfaceWindows(NVMEInterface):
     """Windows-based NVMe communication interface.
 	"""
     def __init__(self, device_path : str):
-        self._device = NVMEInterface._open_device(device_path)
+        self._device = NVMEInterfaceWindows._open_device(device_path)
         self._device_path = device_path
         self._method = win_nvme.IoctlMethod.IOCTL_METHOD_SCSI_PASSTHROUGH_DIRECT
 
 		# @todo some drives only work with StorageProtocol, see if we can support this somehow.
         #self._method = win_nvme.IoctlMethod.IOCTL_METHOD_NVME_STORAGE_PROTOCOL
+
 
     @staticmethod
     def _open_device(device_path : str) -> wintypes.HANDLE:
@@ -71,6 +72,7 @@ class NVMEInterface:
             cdb.sub_code = data_transfer_length_be
 
         return cdb
+
 
     @staticmethod
     def _build_nvme_request(opcode : int, nsid : int, **kwargs : dict)\
@@ -162,6 +164,7 @@ class NVMEInterface:
 
         return bytes(ioctl_data_buffer)
 
+
     def _send_scsi_passthrough(self,
                                direction : win_nvme.DataDirection,
                                in_buffer : bytes,
@@ -209,6 +212,7 @@ class NVMEInterface:
         data_buffer = (len(data_buffer) * ctypes.c_ubyte).from_address(scsi_passthrough.data_buffer)
         return bytes(data_buffer)
 
+
     def _send_nvme_over_scsi(self,
                              nvme_cmd : win_nvme.NVMECmd,
                              actual_data : bytes,
@@ -235,16 +239,17 @@ class NVMEInterface:
             actual_data_len = win_nvme.SCSI_TRIGGER_BUFFER_LENGTH
             actual_data = b"\x00" * actual_data_len
 
-        curr_cdb = NVMEInterface._build_cdb(
+        curr_cdb = NVMEInterfaceWindows._build_cdb(
             win_nvme.CDBOperation.SCSI_SEND_SQ, ctypes.sizeof(nvme_cmd))
         self._send_scsi_passthrough(win_nvme.DataDirection.DIRECTION_OUT,
                                     bytes(nvme_cmd),
                                     ctypes.sizeof(nvme_cmd),
                                     curr_cdb)
 
-        curr_cdb = NVMEInterface._build_cdb(cdb_type, actual_data_len)
+        curr_cdb = NVMEInterfaceWindows._build_cdb(cdb_type, actual_data_len)
         # @todo fix the error code here.
         return 0, self._send_scsi_passthrough(direction, actual_data, actual_data_len, curr_cdb)
+
 
     def _send_nvme_over_storage_protocol(self,
                                          nvme_cmd : win_nvme.NVMECmd,
@@ -304,6 +309,7 @@ class NVMEInterface:
 
 		# @todo fix the error code here.
         return 0, bytes(returned_data_buffer)[offset_to_data : offset_to_data + transfer_length]
+
 
     def nvme_send_command(self, opcode : int, nsid : int, **kwargs : dict):
         """Send an NVMe command to the controller.

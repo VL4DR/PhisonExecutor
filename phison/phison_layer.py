@@ -1,12 +1,14 @@
+import platform
 import ctypes
-try:
-    import nvme_interface.linux.nvme_interface_linux as nvme_interface
-except ImportError:
-    import nvme_interface.windows.nvme_interface_win as nvme_interface
 from common import nvme_common
 import phison.phison_defs as phison
 
 def phison_vsc(func):
+    """Decorator for Phison VSC commands.
+
+    :param func: Phison VSC command function
+    :type func: Function
+    """
     def vsc_wrapper(self, *args, **kwargs):
         self.unlock_vsc()
         return func(self, *args, **kwargs)
@@ -17,7 +19,19 @@ class PhisonLayer:
     """Phison VSC command layer.
 	"""
     def __init__(self, device_path : str):
-        self._nvme = nvme_interface.NVMEInterface(device_path)
+        platform_system = platform.system()
+        if platform_system == 'Linux':
+            from nvme_interface.linux.nvme_interface_linux\
+                import NVMEInterfaceLinux as NVMEInterface
+            self._use_security_recv = True
+        elif platform_system == 'Windows':
+            from nvme_interface.windows.nvme_interface_win\
+                import NVMEInterfaceWindows as NVMEInterface
+            # For Windows this is done anyway.
+            self._use_security_recv = False
+        else:
+            raise phison.UnsupportedOSException(f"OS platform {platform_system} is unsupported!")
+        self._nvme = NVMEInterface(device_path)
 
     @staticmethod
     def _calculate_crc(buf : bytes) -> int:
@@ -111,6 +125,7 @@ class PhisonLayer:
 
         return self._nvme.nvme_send_command(opcode.value, nsid, **kwargs)
 
+
     def _do_security_receive(self,
                              major : phison.PhisonSecuritySendReceiveMajorCommand,
                              minor : phison.PhisonSecuritySendReceiveMinorCommand,
@@ -144,8 +159,9 @@ class PhisonLayer:
 
         return data
 
+
     def _do_security_send(self,
-                             major : phison.PhisonSecuritySendReceiveMajorCommand,
+                          major : phison.PhisonSecuritySendReceiveMajorCommand,
                              minor : phison.PhisonSecuritySendReceiveMinorCommand,
                              data : bytes):
         """Issue an NVM Security Send command based on Phison's command codes.
@@ -173,8 +189,6 @@ class PhisonLayer:
             0,
             **security_send_args
         )
-
-        import pdb; pdb.set_trace()
 
         if ioctl_ret != 0:
             raise phison.PhisonVSCFailedException("Security Send failed!")
@@ -211,6 +225,7 @@ class PhisonLayer:
             raise phison.PhisonVSCFailedException(
                 f"Chunk at offset {offset}, could not be downloaded.\
                     Error code {hex(ioctl_ret)}")
+
 
     def unlock_vsc(self):
         """Unlock processing of the next VSC command.
@@ -251,37 +266,32 @@ class PhisonLayer:
         if offset < 0 or offset >= 2 ** 23:
             raise ValueError(f"Offset {hex(offset)} is invalid!")
 
-        nvm_security_command_args = {
-            'opcode' : phison.PhisonVSCCmd.PHISON_RECEIVE.value,
-            'cdw10' : size >> 2,
-            'cdw11' : 0,
-            'cdw12' : (nvme_common.NVMEOpcode.NVME_GET_LOG_PAGE.value << 8) |\
-                phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
-            'cdw13' : vsc_log_page_id.value,
-            'cdw14' : offset << 9,
-            'cdw15' : 0
-        }
+        read_log_page_args = {'cdw10' : size >> 2,
+                              'cdw12' : (nvme_common.NVMEOpcode.NVME_GET_LOG_PAGE.value << 8) |\
+                              phison.PhisonVSCSubCmd.PHISON_VSC_EXECUTE_STANDARD.value,
+                              'cdw13' : vsc_log_page_id.value,
+                              'cdw14' : offset << 9,
+                              'data_len' : size}
 
-        nvme_cmd = phison.PhisonNVMCommandTemplate(**nvm_security_command_args)
-        nvm_security_crc = PhisonLayer._calculate_request_crc(nvme_cmd)
-        nvme_cmd.cdw15 = nvm_security_crc << 16
+        ioctl_ret, log_data = self._send_phison_vsc(
+            phison.PhisonVSCCmd.PHISON_RECEIVE, 0, **read_log_page_args)
+        if ioctl_ret != 0:
+            raise phison.PhisonVSCFailedException(
+                    f"Log page could not be read.\
+                    Error code {hex(ioctl_ret)}")
 
-        self._do_security_send(
-            phison.PhisonSecuritySendReceiveMajorCommand.\
-                PHISON_SECURITY_MAJOR_COMMAND_HANDLE_VSC,
-            phison.PhisonSecuritySendReceiveMinorCommand.\
-                PHISON_SECURITY_MINOR_COMMAND_SEND_VSC_DATA,
-            bytes(nvme_cmd)
-        )
-
-        log_data = self._do_security_receive(
-            phison.PhisonSecuritySendReceiveMajorCommand.\
-                PHISON_SECURITY_MAJOR_COMMAND_HANDLE_VSC,
-            phison.PhisonSecuritySendReceiveMinorCommand.\
-                PHISON_SECURITY_MINOR_COMMAND_RECEIVE_VSC_DATA,
-            size)
+        # Older FW versions behave a bit differently, and security-receiving the data fetched
+        # by the Get Log Page VSC can be used to retrieve that data.
+        if self._use_security_recv:
+            log_data = self._do_security_receive(
+                phison.PhisonSecuritySendReceiveMajorCommand.\
+                    PHISON_SECURITY_MAJOR_COMMAND_HANDLE_VSC,
+                phison.PhisonSecuritySendReceiveMinorCommand.\
+                    PHISON_SECURITY_MINOR_COMMAND_RECEIVE_VSC_DATA,
+                size)
 
         return log_data
+
 
     def phison_fw_download(self, fw_file_path : str, chunk_size : int):
         """Download FW data to the controller via Phison VSC.

@@ -17,8 +17,7 @@ class PhisonExecutor:
     """
     def __init__(self, device_path : str):
         self._phison = PhisonLayer(device_path)
-        #fw_version = self._get_fw_version()
-        fw_version = 'EGFM13.2'
+        fw_version = self._get_fw_version()
         logger.info(f"Controller FW version {fw_version}")
         if fw_version not in phison_executor_defs.PHISON_EXECUTOR_DEFS:
             raise phison_executor_defs.FirmwareUnsupportedException(
@@ -32,8 +31,8 @@ class PhisonExecutor:
         with open(self._fw_defs['exp_path'], 'rb') as f:
             self._exp_bytes = f.read()
 
-        #self._enable_security_access()
-        #self._install_server()
+        self._enable_security_access()
+        self._install_server()
 
 
     @staticmethod
@@ -108,8 +107,6 @@ class PhisonExecutor:
             phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_SYSTEM_INFO,
             0,
             system_info_size)
-
-        import pdb; pdb.set_trace()
 
         system_info = phison_defs.PhisonSystemInfo.from_buffer_copy(system_info_bytes)
 

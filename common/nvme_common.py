@@ -50,11 +50,3 @@ class NVMEIdentifyBuffer(ctypes.Structure):
 # but rather some common parameters that will be used for making NVMe requests.
 NVME_MAX_TRANSFER_SIZE = 0x20000
 NVME_STANDARD_TIMEOUT_SECONDS = 10
-
-class NVMEFwCommitException(Exception):
-    """NVMe Commit failure.
-    """
-
-class NVMEFwDownloadException(Exception):
-    """NVMe download failure.
-    """
