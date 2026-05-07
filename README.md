@@ -15,15 +15,21 @@ Once the RSA parameters are known, an attacker can complete the authentication a
 Given arbitrary read/write to the controller's SRAM and seeing that the code sections are not even protected by the core's MPU, exploitation here is fairly trivial; One can install a trampoline in one of the command handlers that points to some other writable location where we can put our own code to execute, and then return to the original flow from there.
 We will use <SERVER> to upgrade our read/write primitive to actual code execution.
 
-The tested SSDs we tested (and are thus currently the only ones supported by the executor):
-- PNY CS3030 (ECFM32.2)
-- MSI Spatium M470 (EGFM13.2)
-- Kingston KC3000 (EIFK51.2)
-- Sabrent Rocket 4 Plus (EIFM80.0)
+## Supported Versions
+The SSDs and firmwares we tested (and are thus currently the only ones supported by the executor):
+- PNY CS3030 (Phison E12; ECFM32.2)
+- MSI Spatium M470 (Phison E16; EGFM13.2)
+- Kingston KC3000 (Phison E18; EIFK51.2)
+- Sabrent Rocket 4 Plus (Phison E18; EIFM80.0)
+
+This was also tested successfully on a Crucial P2 drive (Phison E13T), but exploitation there is completely different since that drive's FW code significantly differs from the aforementioned drives, so it will not be included in this repository.
+
+Code execution can surely be achieved on many other Phison-based SSDs, but only what we have managed to test and verify successfully will be included here.
 
 ## Usage
 PhisonExecutor can be run on Windows and Linux machines (Windows 10 and Ubuntu 24.04 were tested). Python3 >3.5 should be used for executing the script. Please also note the requirements.txt file that should be used to install dependencies.
 
+Execute as admin/root:
 ```
 usage: phison_shell.py [-h] device
 
@@ -46,7 +52,7 @@ To write to memory:
 pe.memory_write(0x40100000, b'\xAA\xBB\xCC\xDD')
 ```
 
-To call a function (up to 4 parameters) and receive 64-bit return value:
+To call a function (up to 4 parameters) and receive the 64-bit return value:
 ```
 pe.call_function(0xD40, 0xAABBCCDD, 0x55555555)
 ```
@@ -55,3 +61,13 @@ To execute a flat binary:
 ```
 pe.execute_shellcode('my_shellcode.bin')
 ```
+
+## FAQ
+### If admin/root privileges are needed, then why bother discussing any of the vulnerabilities mentioned here? Don't you have full control over the drive anyway?
+It depends on the end goal of a potential attacker. If all they want is full read/write access to your drive's storage, then being inside your PC is already sufficient. However, what if that attacker wants to take this a few steps further? If a drive's FW is digitally signed, then arbitrary code execution can enable an attacker to bypass the firmware's signature verification, potentially enabling the attacker inserting a malicious payload into the drive's firmware. Once inside, such payload is hidden very well, survives drive formats and can even make sure to survive controller firmware updates. What such payload could actually do is beyond the scope of this document, so it won't be discussed.
+
+### That sounds serious! Should I worry about this, then?
+It is likely that the answer would be a big NO. The amount of R&D needed to actually perform such attack is very high, and would (VERY likely) be possible by very serious threat actors. Unless you're wanted by governments, it is extremely unlikely for this to affect you in any way.
+
+## Notes
+If you have identified inaccuracies or mistakes in the description or that you are having trouble running the script, you can reach me at log1kxd at gmail.com.
