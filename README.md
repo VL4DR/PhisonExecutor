@@ -31,7 +31,9 @@ PhisonExecutor can be run on Windows and Linux machines (Windows 10 and Ubuntu 2
 
 Execute as admin/root:
 ```
-python3 phison_shell.py /dev/nvmeX
+sudo -E python3 phison_shell.py /dev/nvmeX (Linux)
+py phison_shell.py \\.\PhysicalDriveX (Windows, as Admin)
+
 usage: phison_shell.py [-h] device
 
 positional arguments:
