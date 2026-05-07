@@ -31,6 +31,7 @@ PhisonExecutor can be run on Windows and Linux machines (Windows 10 and Ubuntu 2
 
 Execute as admin/root:
 ```
+python3 phison_shell.py /dev/nvmeX
 usage: phison_shell.py [-h] device
 
 positional arguments:
@@ -40,7 +41,7 @@ options:
   -h, --help  show this help message and exit
 ```
 
-Upon executing the script, an IPython shell will spawn, after which the executor's functionality can be access via the 'pe' object.
+Upon executing the script, an IPython shell will spawn, after which the executor's functionality can be accessed via the 'pe' object.
 
 To read from memory:
 ```
