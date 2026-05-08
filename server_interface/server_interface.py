@@ -31,12 +31,29 @@ class ServerInterface:
         :rtype: tuple[server_defs.ServerStatus, bytes]
         """
         response_header = server_defs.ServerResponseHeader.from_buffer_copy(response)
+        if response_header.magic != server_defs.DEFAULT_MAGIC:
+            raise server_defs.InvalidMagicException("Invalid magic in response header!")
+
         response_header_length = ctypes.sizeof(server_defs.ServerResponseHeader)
         data_length = response_header.length
         response_data = response[response_header_length : ][ : data_length]
 
         return server_defs.ServerStatus(response_header.status), response_data
 
+
+    @staticmethod
+    def build_nop_request() -> bytes:
+        """Create a no-operation request.
+
+        :return: Raw request bytes
+        :rtype: bytes
+
+        .. note:: This request can be used to check if the server is up.
+        """
+        nop_request = ServerInterface._build_server_request(
+            server_defs.ServerOpcode.SERVER_OPCODE_NOP.value, b'')
+
+        return nop_request
 
     @staticmethod
     def build_read_memory_request(address : int, size : int) -> bytes:

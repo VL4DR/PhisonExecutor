@@ -13,10 +13,13 @@ Once the RSA parameters are known, an attacker can complete the authentication a
 
 ## Exploitation
 Given arbitrary read/write to the controller's SRAM and seeing that the code sections are not even protected by the core's MPU, exploitation here is fairly trivial; One can install a trampoline in one of the command handlers that points to some other writable location where we can put our own code to execute, and then return to the original flow from there.
-We will use <SERVER> to upgrade our read/write primitive to actual code execution.
+
+We will use [ServeRWX](https://github.com/VL4DR/server/tree/basic-server-functionality) to upgrade our read/write primitive to actual code execution.
+For convenience, precompiled server binaries are provided for each firmware version in their respective directories.
+If you would like to build it yourself, visit the [ServerWX](https://github.com/VL4DR/server/tree/basic-server-functionality) repository and follow the instructions. Then, put the resulting binary in `resources/your_firmware_version` directory. Make sure your server binary is consistent with how the executor sends and receives commands over NVMe.
 
 ## Supported Versions
-The SSDs and firmwares we tested (and are thus currently the only ones supported by the executor):
+The SSDs and firmwares we have tested (and are thus currently the only ones supported by the executor):
 - PNY CS3030 (Phison E12; ECFM32.2)
 - MSI Spatium M470 (Phison E16; EGFM13.2)
 - Kingston KC3000 (Phison E18; EIFK51.2)
@@ -24,7 +27,7 @@ The SSDs and firmwares we tested (and are thus currently the only ones supported
 
 This was also tested successfully on a Crucial P2 drive (Phison E13T), but exploitation there is completely different since that drive's FW code significantly differs from the aforementioned drives, so it will not be included in this repository.
 
-Code execution can surely be achieved on many other Phison-based SSDs, but only what we have managed to test and verify successfully will be included here.
+Code execution can surely be achieved on many other Phison-based SSDs, but only what we have managed to test and verify successfully is included here.
 
 ## Usage
 PhisonExecutor can be run on Windows and Linux machines (Windows 10 and Ubuntu 24.04 were tested). Python3 >3.5 should be used for executing the script. Please also note the requirements.txt file that should be used to install dependencies.

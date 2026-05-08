@@ -98,6 +98,10 @@ class ServerTransferDataRequest(ctypes.Structure):
     _fields_ = [('offset', ctypes.c_uint32)]
 
 
+class InvalidMagicException(Exception):
+    """The response magic is not correct.
+    """
+
 # The maximum size possible for a single server response frame.
 MAX_SERVER_RESPONSE_SIZE = ctypes.sizeof(ServerResponseHeader) + DEFAULT_MAX_SERVER_DATA_SIZE
 

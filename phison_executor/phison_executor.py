@@ -17,7 +17,14 @@ class PhisonExecutor:
     """
     def __init__(self, device_path : str):
         self._phison = PhisonLayer(device_path)
-        fw_version = self._get_fw_version()
+
+        system_info = self._get_system_info()
+
+        security_access_enabled = PhisonExecutor._is_security_access_enabled(system_info)
+
+        logger.info("Starting PhisonExecutor...")
+
+        fw_version = PhisonExecutor._get_fw_version(system_info)
         logger.info(f"Controller FW version {fw_version}")
         if fw_version not in phison_executor_defs.PHISON_EXECUTOR_DEFS:
             raise phison_executor_defs.FirmwareUnsupportedException(
@@ -31,8 +38,13 @@ class PhisonExecutor:
         with open(self._fw_defs['exp_path'], 'rb') as f:
             self._exp_bytes = f.read()
 
-        self._enable_security_access()
-        self._install_server()
+        if not security_access_enabled:
+            logger.info("Security Access is not enabled. Initiating...")
+            self._enable_security_access()
+
+        if not self._is_server_up():
+            logger.info("Server is not up. Installing...")
+            self._install_server()
 
 
     @staticmethod
@@ -95,13 +107,53 @@ class PhisonExecutor:
         return lst
 
 
-    def _get_fw_version(self) -> str:
+    @staticmethod
+    def _get_fw_version(system_info : phison_defs.PhisonSystemInfo) -> str:
         """Get Phison-named controller FW version.
 
+        :param system_info: The controller's system information.
+        :type system_info: phison_defs.PhisonSystemInfo
         :return: The FW version string.
         :rtype: str
         """
-        # First, try without Security Receive.
+        return bytes(system_info.fw_ver).decode('ascii')
+
+
+    @staticmethod
+    def _is_security_access_enabled(system_info : phison_defs.PhisonSystemInfo) -> bool:
+        """Determine if Security Access is enabled.
+
+        :param system_info: The controller's system information.
+        :type system_info: phison_defs.PhisonSystemInfo
+        :return: Whether Security Access is enabled.
+        :rtype: bool
+        """
+        security_level = system_info.security_level
+        protection_state = system_info.protection_state
+
+        if security_level != phison_defs.PhisonSecurityLevel.PHISON_SECURITY_LEVEL_DEFAULT.value:
+            raise phison_executor_defs.UnexpectedSecurityState(
+                f"Unexpected security level {security_level}")
+
+        if protection_state == \
+            phison_defs.PhisonProtectionState.PHISON_PROTECTION_STATE_DEFAULT.value:
+            return False
+
+
+        if protection_state != \
+            phison_defs.PhisonProtectionState.PHISON_PROTECTION_STATE_SECURITY_ACCESS_GRANTED.value:
+            raise phison_executor_defs.UnexpectedSecurityState(
+                f"Unexpected protection state {protection_state}, try resetting the controller")
+
+        return True
+
+
+    def _get_system_info(self) -> phison_defs.PhisonSystemInfo:
+        """Return the controller's system information.
+
+        :return: The system information.
+        :rtype: phison_defs.PhisonSystemInfo
+        """
         system_info_size = ctypes.sizeof(phison_defs.PhisonSystemInfo)
         system_info_bytes = self._phison.phison_get_vsc_log_page(
             phison_defs.PhisonVSCLogPageId.PHISON_VSC_PAGE_ID_SYSTEM_INFO,
@@ -110,7 +162,7 @@ class PhisonExecutor:
 
         system_info = phison_defs.PhisonSystemInfo.from_buffer_copy(system_info_bytes)
 
-        return bytes(system_info.fw_ver).decode('ascii')
+        return system_info
 
 
     def _install_server(self):
@@ -134,6 +186,7 @@ class PhisonExecutor:
         # Wait some time for data cache to be flushed
         # Not very reliable, but we don't have a call primitive
         # for cache flush at this point
+        # @todo find a more reliable way.
         time.sleep(10)
 
 
@@ -276,6 +329,23 @@ class PhisonExecutor:
         return data
 
 
+    def _is_server_up(self) -> bool:
+        """Determine if the server is up.
+
+        :return: Whether the server is up.
+        :rtype: bool
+
+        .. note:: Must be called after Security Access has been granted.
+        """
+        num_server_bytes_to_check = 0x10
+        server_base_address = self._fw_defs['server_base_address']
+
+        with open(self._fw_defs['server_binary_path'], 'rb') as f:
+            first_server_bytes = f.read(num_server_bytes_to_check)
+
+        return self._phison.phison_memory_read(server_base_address, num_server_bytes_to_check)\
+              == first_server_bytes
+
     def memory_read(self, address : int, size : int) -> bytes:
         """Read arbitrary controller memory.
 
@@ -313,6 +383,8 @@ class PhisonExecutor:
         """
         if len(data) == 0:
             raise ValueError("Cannot have empty data!")
+
+         # @todo check that nobody writes on server/request memory.
 
         chunk_size = server_defs.MAX_WRITE_CHUNK_SIZE
         data_len = len(data)

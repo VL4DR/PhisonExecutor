@@ -33,10 +33,12 @@ class PhisonVSCSubCmd(Enum):
     PHISON_VSC_SECURITY_PHASE5 = 0xC6
     PHISON_VSC_EXECUTE_STANDARD = 0xFF
 
+
 class PhisonSecuritySendReceiveMajorCommand(Enum):
     """Phison NVMe Security Send/Receive major commands
     """
     PHISON_SECURITY_MAJOR_COMMAND_HANDLE_VSC = 0xFE
+
 
 class PhisonSecuritySendReceiveMinorCommand(Enum):
     """Phison NVMe Security Send/Receive minor commands
@@ -44,11 +46,27 @@ class PhisonSecuritySendReceiveMinorCommand(Enum):
     PHISON_SECURITY_MINOR_COMMAND_SEND_VSC_DATA = 0xC0
     PHISON_SECURITY_MINOR_COMMAND_RECEIVE_VSC_DATA = 0xC2
 
+
 class PhisonVSCLogPageId(Enum):
     """Phison VSC Log Page ID
     """
     PHISON_VSC_PAGE_ID_SYSTEM_INFO = 0xC2
     PHISON_VSC_PAGE_ID_C6 = 0xC6
+
+
+class PhisonProtectionState(Enum):
+    """Phison controller protection state.
+    """
+    PHISON_PROTECTION_STATE_DEFAULT = 1
+    PHISON_PROTECTION_STATE_SECURITY_ACCESS_GRANTED = 3
+
+
+class PhisonSecurityLevel(Enum):
+    """Phison security level.
+    """
+    # It is unclear what the security level means, but it might help determining
+    # for which controllers Security Access may be granted.
+    PHISON_SECURITY_LEVEL_DEFAULT = 2
 
 
 # Phison FW version string size in bytes.
@@ -59,12 +77,12 @@ class PhisonSystemInfo(ctypes.Structure):
     """Phison System Information structure.
     """
     _pack_ = 1
-    _fields_ = [('unk0', ctypes.c_ubyte * 410),
+    _fields_ = [('unk0', ctypes.c_ubyte * 377),
+                ('security_level', ctypes.c_ubyte),
+                ('protection_state', ctypes.c_ubyte),
+                ('unk1', ctypes.c_ubyte * 31),
                 ('fw_ver', ctypes.c_ubyte * PHISON_FW_NAME_SIZE),
-                ('unk1', ctypes.c_ubyte * 3678)]
-
-# Number of bytes in the system info structure
-PHISON_SYSTEM_INFO_SIZE = 0x1000
+                ('unk2', ctypes.c_ubyte * 3678)]
 
 # The magic value used for unlocking Phison VSC.
 VSC_UNLOCK_MAGIC = 0xFAEFFE6F
