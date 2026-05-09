@@ -1,7 +1,7 @@
 # PhisonExecutor
 
 ## Introduction
-PhisonExecutor is a Python infrastructure that allows executing arbitrary code on many Phison SSD controllers.
+*PhisonExecutor* is a Python infrastructure that allows executing arbitrary code on many Phison SSD controllers.
 
 ## How?
 Generally, executing code on SSD controllers is not a feature vendors allow, so to do that, the controller must be researched thoroughly to find vulnerabilities or some vendor-specific commands (VSCs) that can enable an attacker constructing primitives to achieve that.
@@ -16,7 +16,7 @@ Given arbitrary read/write to the controller's SRAM and seeing that the code sec
 
 We will use [ServeRWX](https://github.com/VL4DR/server/tree/basic-server-functionality) to upgrade our read/write primitive to actual code execution.
 For convenience, precompiled server binaries are provided for each firmware version in their respective directories.
-If you would like to build it yourself, visit the [ServeWX](https://github.com/VL4DR/server/tree/basic-server-functionality) repository and follow the instructions. Then, put the resulting binary in `resources/your_firmware_version` directory. Make sure your server binary is consistent with how the executor sends and receives commands over NVMe.
+If you would like to build it yourself, visit the [ServeRWX](https://github.com/VL4DR/server/tree/basic-server-functionality) repository and follow the instructions. Then, put the resulting binary in `resources/<fw>` directory, replacing `server.bin`. Make sure your server binary is consistent with how the executor sends and receives commands over NVMe.
 
 ## Supported Versions
 The SSDs and firmwares we have tested (and are thus currently the only ones supported by the executor):
@@ -30,13 +30,10 @@ This was also tested successfully on a Crucial P2 drive (Phison E13T), but explo
 Code execution can surely be achieved on many other Phison-based SSDs, but only what we have managed to test and verify successfully is included here.
 
 ## Usage
-PhisonExecutor can be run on Windows and Linux machines (Windows 10 and Ubuntu 24.04 were tested). Python3 >3.5 should be used for executing the script. Please also note the requirements.txt file that should be used to install dependencies.
+*PhisonExecutor* can be run on Windows and Linux machines (Windows 10 and Ubuntu 24.04 were tested). Python3 >3.5 should be used for executing the script. Please also note the *requirements.txt* file that should be used to install dependencies.
 
 Execute as admin/root:
 ```
-sudo -E python3 phison_shell.py /dev/nvmeX (Linux)
-py phison_shell.py \\.\PhysicalDriveX (Windows, as Admin)
-
 usage: phison_shell.py [-h] device
 
 positional arguments:
@@ -44,13 +41,19 @@ positional arguments:
 
 options:
   -h, --help  show this help message and exit
+
+Linux:
+sudo -E python3 phison_shell.py /dev/nvmeX
+
+Windows, as Admin:
+py phison_shell.py \\.\PhysicalDriveX
 ```
 
 Upon executing the script, an IPython shell will spawn, after which the executor's functionality can be accessed via the 'pe' object.
 
 To read from memory:
 ```
-pe.memory_read(0x40100000, 0x10)
+data = pe.memory_read(0x40100000, 0x10)
 ```
 
 To write to memory:
@@ -60,12 +63,12 @@ pe.memory_write(0x40100000, b'\xAA\xBB\xCC\xDD')
 
 To call a function (up to 4 parameters) and receive the 64-bit return value:
 ```
-pe.call_function(0xD40, 0xAABBCCDD, 0x55555555)
+result = pe.call_function(0xD40, 0xAABBCCDD, 0x55555555)
 ```
 
-To execute a flat binary:
+To execute a flat binary and return its 64-bit return value:
 ```
-pe.execute_shellcode('my_shellcode.bin')
+result = pe.execute_shellcode('my_shellcode.bin')
 ```
 
 ## FAQ
@@ -76,4 +79,6 @@ It depends on the end goal of a potential attacker. If all they want is full rea
 It is likely that the answer would be a big NO. The amount of R&D needed to actually perform such attack is very high, and would (VERY likely) be possible by very serious threat actors. Unless you're wanted by governments, it is extremely unlikely for this to affect you in any way.
 
 ## Notes
-If you have identified inaccuracies or mistakes in the description or that you are having trouble running the script, you can reach me at log1kxd at gmail.com.
+* The code in this repository is and will always remain development stage code, so use at YOUR OWN RISK.
+* The code presented in this repository is for demonstrative purposes ONLY.
+* If you have identified inaccuracies or mistakes in the description or that you are having trouble running the script, you can reach me at log1kxd at gmail.com.
