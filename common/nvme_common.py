@@ -11,6 +11,7 @@ class NVMEOpcode(Enum):
     NVME_SECURITY_SEND = 0x81
     NVME_SECURITY_RECEIVE = 0x82
 
+
 class NVMECommitAction(Enum):
     """NVMe Commit actions.
     """
@@ -21,15 +22,18 @@ class NVMECommitAction(Enum):
     NVME_FW_COMMIT_CA_REPLACE_BOOT_PARTITION = 6
     NVME_FW_COMMIT_CA_ACTIVATE_BOOT_PARTITION = 7
 
+
 class NVMEIdentifyCNS(Enum):
     """NVMe Controller or Namepace Structures.
     """
     NVME_CNS_CONTROLLER = 1
 
+
 class NVMECSI(Enum):
     """NVMe Command Set Identifier.
     """
     NVME_CSI_NVM = 0
+
 
 NVME_IDENTIFY_REST_FIELDS_SIZE = 0xFAC
 class NVMEIdentifyBuffer(ctypes.Structure):

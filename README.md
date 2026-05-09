@@ -16,7 +16,7 @@ Given arbitrary read/write to the controller's SRAM and seeing that the code sec
 
 We will use [ServeRWX](https://github.com/VL4DR/server/tree/basic-server-functionality) to upgrade our read/write primitive to actual code execution.
 For convenience, precompiled server binaries are provided for each firmware version in their respective directories.
-If you would like to build it yourself, visit the [ServerWX](https://github.com/VL4DR/server/tree/basic-server-functionality) repository and follow the instructions. Then, put the resulting binary in `resources/your_firmware_version` directory. Make sure your server binary is consistent with how the executor sends and receives commands over NVMe.
+If you would like to build it yourself, visit the [ServeWX](https://github.com/VL4DR/server/tree/basic-server-functionality) repository and follow the instructions. Then, put the resulting binary in `resources/your_firmware_version` directory. Make sure your server binary is consistent with how the executor sends and receives commands over NVMe.
 
 ## Supported Versions
 The SSDs and firmwares we have tested (and are thus currently the only ones supported by the executor):

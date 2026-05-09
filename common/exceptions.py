@@ -13,3 +13,7 @@ class NVMEFwCommitException(Exception):
 class NVMEFwDownloadException(Exception):
     """NVMe download failure.
     """
+
+class UnsupportedOSException(Exception):
+    """OS is unsupported.
+    """

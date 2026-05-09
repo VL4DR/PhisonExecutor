@@ -1,8 +1,9 @@
 import platform
 import ctypes
-import common
 from common import nvme_common
+import common.exceptions as common_exceptions
 import phison.phison_defs as phison
+import phison.exceptions as phison_exceptions
 
 def phison_vsc(func):
     """Decorator for Phison VSC commands.
@@ -31,8 +32,10 @@ class PhisonLayer:
             # For Windows this is done anyway.
             self._use_security_recv = False
         else:
-            raise phison.UnsupportedOSException(f"OS platform {platform_system} is unsupported!")
+            raise common_exceptions.UnsupportedOSException(
+                f"OS platform {platform_system} is unsupported!")
         self._nvme = NVMEInterface(device_path)
+
 
     @staticmethod
     def _calculate_crc(buf : bytes) -> int:
@@ -56,6 +59,7 @@ class PhisonLayer:
                 crc = curr
 
         return ((crc & 0xFF) << 8) | ((crc >> 8) & 0xFF)
+
 
     @staticmethod
     def _pad_zero_bytes(buf : bytes, alignment : int) -> bytes:
@@ -156,7 +160,7 @@ class PhisonLayer:
             **security_receive_args
         )
         if ioctl_ret != 0:
-            raise phison.PhisonVSCFailedException("Security Receive failed!")
+            raise phison_exceptions.PhisonVSCFailedException("Security Receive failed!")
 
         return data
 
@@ -192,7 +196,7 @@ class PhisonLayer:
         )
 
         if ioctl_ret != 0:
-            raise phison.PhisonVSCFailedException("Security Send failed!")
+            raise phison_exceptions.PhisonVSCFailedException("Security Send failed!")
 
 
     @phison_vsc
@@ -201,7 +205,7 @@ class PhisonLayer:
 
 		:param chunk_data: The Phison VSC command code.
 		:type chunk_data: phison.PhisonVSCCmd
-        :raises phison.PhisonVSCFailedException: Error in VSC processing of a chunk.
+        :raises phison_exceptions.PhisonVSCFailedException: Error in VSC processing of a chunk.
         :raises ValueError: offset is negative.
         :raises ValueError: length of chunk is invalid.
 
@@ -223,7 +227,7 @@ class PhisonLayer:
         ioctl_ret, _ = self._send_phison_vsc(
                 phison.PhisonVSCCmd.PHISON_SEND, 0, **download_args)
         if ioctl_ret != 0:
-            raise phison.PhisonVSCFailedException(
+            raise phison_exceptions.PhisonVSCFailedException(
                 f"Chunk at offset {offset}, could not be downloaded.\
                     Error code {hex(ioctl_ret)}")
 
@@ -231,14 +235,14 @@ class PhisonLayer:
     def unlock_vsc(self):
         """Unlock processing of the next VSC command.
 
-		:raises phison.PhisonVSCFailedException: Failure unlocking VSC.
+		:raises phison_exceptions.PhisonVSCFailedException: Failure unlocking VSC.
 		"""
         unlock_vsc_args = {'cdw13' : phison.VSC_UNLOCK_MAGIC}
 
         ret_code, _ = self._send_phison_vsc(
             phison.PhisonVSCCmd.PHISON_CONFIGURE, 0, **unlock_vsc_args)
         if ret_code != 0:
-            raise phison.PhisonVSCFailedException(
+            raise phison_exceptions.PhisonVSCFailedException(
                 f"Unlocking VSC failed. Error code {hex(ret_code)}")
 
 
@@ -277,7 +281,7 @@ class PhisonLayer:
         ioctl_ret, log_data = self._send_phison_vsc(
             phison.PhisonVSCCmd.PHISON_RECEIVE, 0, **read_log_page_args)
         if ioctl_ret != 0:
-            raise phison.PhisonVSCFailedException(
+            raise phison_exceptions.PhisonVSCFailedException(
                     f"Log page could not be read.\
                     Error code {hex(ioctl_ret)}")
 
@@ -302,7 +306,7 @@ class PhisonLayer:
 		:param chunk_size: The chunk size to use for downloading.
 		:type chunk_size: int
         :raises ValueError: Invalid chunk size or empty FW file.
-        :raises phison.PhisonVSCFailedException: Error in VSC processing.
+        :raises phison_exceptions.PhisonVSCFailedException: Error in VSC processing.
 
         .. note:: chunk_size must be >= 4 and <= nvme_common.NVME_MAX_TRANSFER_SIZE.
 		"""
@@ -335,7 +339,7 @@ class PhisonLayer:
 		:param action: The action to use when commiting the image.
 		:type action: nvme_common.NVMECommitAction
 		:raises ValueError: Invalid firmware slot.
-		:raises phison.PhisonVSCFailedException: Failure commiting the image.
+		:raises phison_exceptions.PhisonVSCFailedException: Failure commiting the image.
 		"""
         if slot < 0 or slot > 7:
             raise ValueError("Valid firmware slot value is in the range 0 - 7")
@@ -346,7 +350,8 @@ class PhisonLayer:
 
         ret_code, _ = self._send_phison_vsc(phison.PhisonVSCCmd.PHISON_CONFIGURE, 0, **commit_args)
         if ret_code != 0:
-            raise phison.PhisonVSCFailedException(f"Commit failed. Error code {hex(ret_code)}")
+            raise phison_exceptions.PhisonVSCFailedException(
+                f"Commit failed. Error code {hex(ret_code)}")
 
 
     @phison_vsc
@@ -358,6 +363,7 @@ class PhisonLayer:
 		:type cns: nvme_common.NVMEIdentifyCNS
 		:param csi: NVMe Command Set Identifier.
 		:type csi: nvme_common.NVMECSI
+        :raises phison_exceptions.PhisonVSCFailedException: Failure identifying device.
 		:return: The NVMe identify data.
 		:rtype: nvme_common.NVMEIdentifyBuffer
 		"""
@@ -375,7 +381,8 @@ class PhisonLayer:
 
         identify_data = nvme_common.NVMEIdentifyBuffer.from_buffer_copy(identify_buffer)
         if ret_code != 0:
-            raise phison.PhisonVSCFailedException(f"Identify failed. Error code {hex(ret_code)}")
+            raise phison_exceptions.PhisonVSCFailedException(
+                f"Identify failed. Error code {hex(ret_code)}")
 
         return identify_data
 
@@ -385,26 +392,27 @@ class PhisonLayer:
 
 		:param security_fw_file_path: The path to the security FW binary to use.
 		:type security_fw_file_path: str
-		:raises phison.Phase2RecoverableException: Upon encountering a recoverable condition.
-		:raises phison.Phase2UnexpectedException: Any other unexpected condition.
+		:raises phison_exceptions.Phase2RecoverableException: Upon encountering a recoverable condition.
+		:raises phison_exceptions.Phase2UnexpectedException: Any other unexpected condition.
         
         .. note:: The controller must not have initiated a Security Access process.
 		"""
         try:
             self.phison_fw_download(security_fw_file_path, 0x1000)
             self.phison_fw_commit(0, nvme_common.NVMECommitAction.NVME_FW_COMMIT_CA_REPLACE)
-        except common.exceptions.NVMEFwCommitException as exc:
-            raise phison.Phase2RecoverableException(
+        except common_exceptions.NVMEFwCommitException as exc:
+            raise phison_exceptions.Phase2RecoverableException(
                 "Either security FW image is invalid or a reset attempt should be made") from exc
-        except (common.exceptions.NVMEFwDownloadException, Exception) as exc:
-            raise phison.Phase2UnexpectedException(
+        except (common_exceptions.NVMEFwDownloadException, Exception) as exc:
+            raise phison_exceptions.Phase2UnexpectedException(
                 "Unexpected exception at 2nd phase, cannot continue") from exc
+
 
     @phison_vsc
     def phison_security_move_phase3(self):
         """Move to Security Access phase 3 (switch to challenge reception).
 
-		:raises phison.Phase3GeneralException: VSC failure.
+		:raises phison_exceptions.Phase3GeneralException: VSC failure.
         
         .. note:: The controller must be in phase 2.
 		"""
@@ -415,7 +423,7 @@ class PhisonLayer:
         ret_code, _ = self._send_phison_vsc(
             phison.PhisonVSCCmd.PHISON_CONFIGURE, 0, **security_args)
         if ret_code != 0:
-            raise phison.Phase3GeneralException(
+            raise phison_exceptions.Phase3GeneralException(
                 f"Moving to phase 3 failed. Error code {hex(ret_code)}")
 
 
@@ -423,7 +431,7 @@ class PhisonLayer:
     def phison_security_move_phase4(self) -> bytes:
         """Move to Security Access phase 4 (receive challenge data).
 
-        :raises phison.Phase4GeneralException: VSC failure.
+        :raises phison_exceptions.Phase4GeneralException: VSC failure.
         :return: The challenge data.
         :rtype: bytes
 
@@ -436,12 +444,13 @@ class PhisonLayer:
         ret_code, ret_buf = self._send_phison_vsc(
             phison.PhisonVSCCmd.PHISON_RECEIVE, 0, **security_args)
         if ret_code != 0:
-            raise phison.Phase4GeneralException(
+            raise phison_exceptions.Phase4GeneralException(
                 f"Moving to phase 4 failed. Error code {hex(ret_code)}")
 
         assert len(ret_buf) == phison.PHISON_SECURITY_CHALLENGE_SIZE
 
         return ret_buf
+
 
     @phison_vsc
     def phison_security_move_phase5(self, response : bytes):
@@ -450,8 +459,8 @@ class PhisonLayer:
 		:param response: The response to the challenge.
 		:type response: bytes
         :raises ValueError: Invalid response size.
-        :raises phison.InvalidSecurityResponseException: The response is not correct.
-        :raises phison.Phase5GeneralException: Any other error.
+        :raises phison_exceptions.InvalidSecurityResponseException: The response is not correct.
+        :raises phison_exceptions.Phase5GeneralException: Any other error.
         
         .. note:: The controller must be in phase 4.
 		"""
@@ -471,8 +480,8 @@ class PhisonLayer:
         if ret_code != 0:
             exc_message = f"Moving to phase 5 failed. Error code {hex(ret_code)}"
             if cmd_status_code == 0:
-                raise phison.InvalidSecurityResponseException(exc_message)
-            raise phison.Phase5GeneralException(exc_message)
+                raise phison_exceptions.InvalidSecurityResponseException(exc_message)
+            raise phison_exceptions.Phase5GeneralException(exc_message)
 
 
     @phison_vsc
@@ -484,7 +493,7 @@ class PhisonLayer:
 		:param data: The data to write.
 		:type data: bytes
         :raises ValueError: Invalid data size.
-        :raises phison.PhisonVSCFailedException: Error in VSC processing.
+        :raises phison_exceptions.PhisonVSCFailedException: Error in VSC processing.
 
         .. note:: The controller must have entered Security Access.
         .. note:: size of data must be > 0 and <= phison.PHISON_RW_CHUNK_SIZE.
@@ -509,7 +518,7 @@ class PhisonLayer:
         self.unlock_vsc()
         ret_code, _ = self._send_phison_vsc(phison.PhisonVSCCmd.PHISON_SEND, 0, **write_args)
         if ret_code != 0:
-            raise phison.PhisonVSCFailedException(
+            raise phison_exceptions.PhisonVSCFailedException(
                 f"Memory write failed. Error code {hex(ret_code)}")
 
 
@@ -522,7 +531,7 @@ class PhisonLayer:
 		:param size: The number of bytes to read.
         :type size: int
         :raises ValueError: The number of bytes to read is invalid.
-        :raises phison.PhisonVSCFailedException: Error in VSC processing.
+        :raises phison_exceptions.PhisonVSCFailedException: Error in VSC processing.
         :return: The data read.
         :rtype: bytes
 
@@ -544,6 +553,7 @@ class PhisonLayer:
         ret_code, ret_buf = self._send_phison_vsc(
             phison.PhisonVSCCmd.PHISON_RECEIVE, 0, **read_args)
         if ret_code != 0:
-            raise phison.PhisonVSCFailedException(f"Memory read failed. Error code {hex(ret_code)}")
+            raise phison_exceptions.PhisonVSCFailedException(
+                f"Memory read failed. Error code {hex(ret_code)}")
 
         return ret_buf[ : size]

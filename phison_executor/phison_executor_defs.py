@@ -52,18 +52,3 @@ PHISON_EXECUTOR_DEFS = {
 	'EIFK51.2' : EIFK512_DEFS,
 	'EIFM80.0' : EIFM800_DEFS,
 }
-
-
-class FirmwareUnsupportedException(Exception):
-    """Firmware version is not supported.
-    """
-
-
-class UnexpectedServerStatusException(Exception):
-    """Unexpected status returned from Server.
-    """
-
-
-class UnexpectedSecurityState(Exception):
-    """Unexpected controller security state.
-    """

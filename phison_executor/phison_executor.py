@@ -5,6 +5,7 @@ from functools import reduce
 from Crypto.Cipher import AES
 from Crypto.Util.number import bytes_to_long, long_to_bytes
 from phison_executor import phison_executor_defs
+import phison_executor.exceptions as executor_exceptions
 from phison import phison_defs
 from phison.phison_layer import PhisonLayer
 from server_interface.server_interface import ServerInterface
@@ -27,7 +28,7 @@ class PhisonExecutor:
         fw_version = PhisonExecutor._get_fw_version(system_info)
         logger.info(f"Controller FW version {fw_version}")
         if fw_version not in phison_executor_defs.PHISON_EXECUTOR_DEFS:
-            raise phison_executor_defs.FirmwareUnsupportedException(
+            raise executor_exceptions.FirmwareUnsupportedException(
                 f"FW version {fw_version} is currently unsupported!")
 
         self._fw_defs = phison_executor_defs.PHISON_EXECUTOR_DEFS[fw_version]
@@ -38,13 +39,19 @@ class PhisonExecutor:
         with open(self._fw_defs['exp_path'], 'rb') as f:
             self._exp_bytes = f.read()
 
+        with open(self._fw_defs['server_binary_path'], 'rb') as f:
+            server_binary = f.read()
+
+        with open(self._fw_defs['server_trampoline_binary_path'], 'rb') as f:
+            trampoline_binary = f.read()
+
         if not security_access_enabled:
             logger.info("Security Access is not enabled. Initiating...")
             self._enable_security_access()
 
-        if not self._is_server_up():
+        if not self._is_server_up(server_binary):
             logger.info("Server is not up. Installing...")
-            self._install_server()
+            self._install_server(server_binary, trampoline_binary)
 
 
     @staticmethod
@@ -132,7 +139,7 @@ class PhisonExecutor:
         protection_state = system_info.protection_state
 
         if security_level != phison_defs.PhisonSecurityLevel.PHISON_SECURITY_LEVEL_DEFAULT.value:
-            raise phison_executor_defs.UnexpectedSecurityState(
+            raise executor_exceptions.UnexpectedSecurityState(
                 f"Unexpected security level {security_level}")
 
         if protection_state == \
@@ -142,7 +149,7 @@ class PhisonExecutor:
 
         if protection_state != \
             phison_defs.PhisonProtectionState.PHISON_PROTECTION_STATE_SECURITY_ACCESS_GRANTED.value:
-            raise phison_executor_defs.UnexpectedSecurityState(
+            raise executor_exceptions.UnexpectedSecurityState(
                 f"Unexpected protection state {protection_state}, try resetting the controller")
 
         return True
@@ -165,15 +172,14 @@ class PhisonExecutor:
         return system_info
 
 
-    def _install_server(self):
+    def _install_server(self, server_binary : bytes, trampoline_binary : bytes):
         """Install the server binary into the controller.
+
+        :param server_binary: The server binary bytes.
+        :type server_binary: bytes
+        :param trampoline_binary: The trampoline binary bytes.
+        :type trampoline_binary: bytes
         """
-        with open(self._fw_defs['server_binary_path'], 'rb') as f:
-            server_binary = f.read()
-
-        with open(self._fw_defs['server_trampoline_binary_path'], 'rb') as f:
-            trampoline_binary = f.read()
-
         server_base_address = self._fw_defs['server_base_address']
         trampoline_address = self._fw_defs['server_trampoline_address']
 
@@ -323,15 +329,17 @@ class PhisonExecutor:
 
         status, data = ServerInterface.parse_server_response(response)
         if status != server_defs.ServerStatus.SERVER_SUCCESS:
-            raise phison_executor_defs.UnexpectedServerStatusException(
+            raise executor_exceptions.UnexpectedServerStatusException(
                 f"Unexpected status {status.value} returned from server!")
 
         return data
 
 
-    def _is_server_up(self) -> bool:
+    def _is_server_up(self, server_binary : bytes) -> bool:
         """Determine if the server is up.
 
+        :param server_binary: The server binary bytes.
+        :type server_binary: bytes
         :return: Whether the server is up.
         :rtype: bool
 
@@ -339,12 +347,11 @@ class PhisonExecutor:
         """
         num_server_bytes_to_check = 0x10
         server_base_address = self._fw_defs['server_base_address']
-
-        with open(self._fw_defs['server_binary_path'], 'rb') as f:
-            first_server_bytes = f.read(num_server_bytes_to_check)
+        first_server_bytes = server_binary[ : num_server_bytes_to_check]
 
         return self._phison.phison_memory_read(server_base_address, num_server_bytes_to_check)\
               == first_server_bytes
+
 
     def memory_read(self, address : int, size : int) -> bytes:
         """Read arbitrary controller memory.
