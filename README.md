@@ -1,7 +1,7 @@
 # PhisonExecutor
 
 ## Introduction
-*PhisonExecutor* is a Python infrastructure that allows executing arbitrary code on many Phison SSD controllers.
+*PhisonExecutor* is a Python infrastructure that allows executing arbitrary code on many Phison SSD controllers. It contains the reference code for *CVE-2026-126828*, *CVE-2026-129187* and *CVE-2026-129190*.
 
 ## How?
 Generally, executing code on SSD controllers is not a feature vendors allow, so to do that, the controller must be researched thoroughly to find vulnerabilities or some vendor-specific commands (VSCs) that can enable an attacker constructing primitives to achieve that.
@@ -75,8 +75,10 @@ result = pe.execute_shellcode('my_shellcode.bin')
 ### If admin/root privileges are needed, then why bother discussing any of the vulnerabilities mentioned here? Don't you have full control over the drive anyway?
 It depends on the end goal of a potential attacker. If all they want is full read/write access to your drive's storage, then being inside your PC is already sufficient. However, what if that attacker wants to take this a few steps further? If a drive's FW is digitally signed, then arbitrary code execution can enable an attacker to bypass the firmware's signature verification, potentially enabling the attacker inserting a malicious payload into the drive's firmware. Once inside, such payload is hidden very well, survives drive formats and can even make sure to survive controller firmware updates. What such payload could actually do is beyond the scope of this document, so it won't be discussed.
 
-### That sounds serious! Should I worry about this, then?
-It is likely that the answer would be a big NO. The amount of R&D needed to actually perform such attack is very high, and would (VERY likely) be possible by very serious threat actors. Unless you're wanted by governments, it is extremely unlikely for this to affect you in any way.
+### Could you share the disclosure timeline?
+Phison was notified on February 2026 about this issue and after receiving the details, no response has followed even after repeated attempts to follow up on it.
+A CVE request to MITRE was submitted on May 2026, however besides initial confirmation on receiving the report, there has been no response from them to this point.
+CERT/CC was notified on September 2026, and after further attempts to reach Phison and get their response (with no success), a CVE was assigned on November 2026.
 
 ## Notes
 * The code in this repository is and will always remain development stage code, so use at YOUR OWN RISK.
